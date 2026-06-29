@@ -127,7 +127,7 @@ created_at timestamptz default now()
 
 ### 2.5 Dependency Policy
 - Default: no new dependencies without explicit approval (see Rule 6 in 1.4).
-- Pre-approved (already implied by stack): `@supabase/supabase-js`, `playwright`, `shadcn/ui` components, `tailwindcss`, `@google/generative-ai`.
+- Pre-approved (already implied by stack): `@supabase/supabase-js`, `@supabase/ssr`, `playwright`, `shadcn/ui` components, `tailwindcss`, `@google/generative-ai`.
 - Anything else (markdown editor lib, webhook client, etc.) must be proposed in 2.9 before installation.
 
 ### 2.6 Testing & CI Conventions
@@ -154,13 +154,7 @@ A subphase is only complete when, in order:
 ### 2.9 Proposed Changes (Pending Approval)
 *(Claude Code appends here. Human reviews, then manually promotes into 2.1–2.8 and clears the entry.)*
 
-- [2026-06-29] [Subphase 1.1]: Next.js project scaffold (`package.json`, `tsconfig.json`, `next.config.*`, `eslint.config.*`) does not exist yet — the lint/build commands in 1.3 and 2.8 cannot run until it is initialized. Recommend adding a Phase 0 or pre-Phase-1.1 step to scaffold the Next.js app (e.g., `npx create-next-app@latest`) so Definition of Done checks are executable from Phase 1.2 onward. — Reason: bare repo had only CLAUDE.md and README.md at start of 1.1; no npm workspace present.
-
-- [2026-06-29] [Subphase 1.2]: Section 2.2 states RLS should use `user_id = auth.uid()` policies from day one, but Section 2.1 explicitly defers the `user_id` column until multi-user support is built. These two are in direct conflict. The workaround implemented in this phase is an `authenticated`-role policy (`USING (true) WITH CHECK (true)`) — any logged-in user can see all rows, which is correct for single-user mode but would be a data-leak in multi-user mode. **Proposal:** Either (a) add `user_id uuid references auth.users(id)` to the `jobs` table now and switch to `user_id = auth.uid()` policies (future-proof, low-cost now), or (b) update Section 2.2 to document the `authenticated`-role interim policy and note it must be replaced before multi-user is enabled. Human review required before deciding. — Reason: RLS policy shape today determines migration complexity when multi-user is added later. **RESOLVED [2026-06-29]:** Human approved Option (a). `user_id uuid NOT NULL REFERENCES auth.users(id)` added via migration `20260629150000_add_user_id_to_jobs.sql`; RLS policy updated to `user_id = auth.uid()`. Human should update Section 2.1 (add `user_id` to schema block) and Section 2.2 (remove the `user_id` deferral note and confirm `user_id = auth.uid()` policy) and then clear this entry.
-
 - [2026-06-29] [Subphase 1.2 → Phase 3 dependency]: The scraper worker (`/workers/scraper`) inserts rows into `jobs` using the service-role key (RLS bypassed), but `user_id` is now `NOT NULL`. The scraper must supply an explicit `user_id` value at insert time or the insert will fail. **Proposal for Phase 3:** Create a dedicated Supabase "bot" user account for the scraper (e.g., `scraper@careerforge.internal`) and store its UUID as a GitHub Actions secret (`SCRAPER_USER_ID`). The scraper passes this UUID as `user_id` on every insert. This keeps RLS meaningful for future multi-user while unblocking the scraper today. Must be decided before Phase 3.1 begins.
-
-- [2026-06-29] [Subphase 1.3]: `lib/supabase.ts` uses a **lazy singleton** pattern (`getSupabaseClient()` function) rather than a module-level `export const supabase = createClient(...)`. A module-level singleton with a `throw` fires during Next.js build-time page data collection (before env vars are available), causing `npm run build` to fail. The lazy pattern still validates env vars on first call and still returns a singleton (client is cached in a module-level `let _client`), satisfying both "fail fast" and "singleton" requirements. All future routes should import `getSupabaseClient` from `@/lib/supabase`, not a bare `supabase` instance. — Reason: Next.js 16 (Turbopack) imports API route modules during the build "Collecting page data" phase; env vars are not injected at that point.
 
 ---
 
@@ -174,9 +168,9 @@ A subphase is only complete when, in order:
 - [x] 1.3 Verify DB connection via a minimal Next.js API route test; confirm service-role key is never imported client-side.
 
 ### Phase 2: Core Dashboard UI Grid
-- [ ] 2.1 Build layout with Internship / New Grad toggle tabs.
-- [ ] 2.2 Implement dense results table with mock data.
-- [ ] 2.3 Connect "Applied" checkbox to live Supabase PATCH requests (persists across refresh).
+- [x] 2.1 Build layout with Internship / New Grad toggle tabs.
+- [x] 2.2 Implement dense results table with mock data.
+- [x] 2.3 Connect "Applied" checkbox to live Supabase PATCH requests (persists across refresh).
 
 ### Phase 3: Playwright Ingestion Pipeline
 - [ ] 3.1 Write standalone Playwright scraper in `/workers/scraper`, fully decoupled per Rule 2.
@@ -207,3 +201,5 @@ A subphase is only complete when, in order:
 - [2026-06-29] Migration hotfix: removed `ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY` from `20260629143000_enable_rls_and_storage.sql`. Supabase owns `storage.objects` internally — the statement errored with `must be owner of table objects (SQLSTATE 42501)`. RLS on that table is already enabled by Supabase; the line was redundant. All three migrations now apply cleanly via `supabase db push`. Live connection confirmed: `GET /api/db-test` returned `{"connected":true,"rowCount":0}`.
 
 - [2026-06-29] Phase 1.3 complete (human approved): Installed `@supabase/supabase-js`. Created `lib/supabase.ts` (lazy singleton via `getSupabaseClient()`, validates env vars on first call, never references service-role key). Created `app/api/db-test/route.ts` (GET handler, queries `jobs` with anon key, treats `data: [] + error: null` as a successful connection per RLS behavior documented in blueprint). `npm run lint` and `npm run build` both pass clean; route is correctly flagged as `ƒ (Dynamic)`. | Known issues: module-level throw pattern does not work at Next.js build time — lazy singleton was used instead (proposed in 2.9). | Notes for next subphase (2.1): before building the dashboard UI, ensure `.env.local` is populated with `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`; hit `GET /api/db-test` in a running dev server to confirm live DB connectivity. All future routes should call `getSupabaseClient()` from `@/lib/supabase`.
+
+- [2026-06-29] Phase 2.1, 2.2, 2.3 complete (pending human review): Initialized shadcn/ui (Tailwind v4, New York style). Added components: tabs, table, checkbox, badge, sonner (toast deprecated). Created `components/providers.tsx` (ThemeProvider dark + Toaster), updated `app/layout.tsx`. Created `lib/supabase-admin.ts` (service-role client, server-only). Created `app/api/seed/route.ts` (POST `?user_id=<uuid>`, inserts 10 mock jobs — confirmed working). Created `app/api/jobs/[id]/route.ts` (PATCH, Bearer-token auth, RLS enforced). Installed `@supabase/ssr` (human-approved); `lib/supabase.ts` now uses `createBrowserClient` (cookie-backed session), `lib/supabase-server.ts` provides `getSupabaseServerClient()`. `app/dashboard/page.tsx` is a full async Server Component: reads session server-side, fetches jobs, passes `initialJobs` prop to `components/dashboard/jobs-table.tsx` (Client Component — tabs, dense table, optimistic Applied checkbox, race-condition guard via `inFlightRef`, sonner toast on revert). `/dashboard` builds as `ƒ (Dynamic)`. `npm run lint` and `npm run build` both pass clean. | Known issues: none. | Notes for next subphase (3.x): seed route requires `SUPABASE_SERVICE_ROLE_KEY` in `.env.local` (never commit); remove or gate this route before any public deployment. A `middleware.ts` for token refresh should be added when auth UI is built.
