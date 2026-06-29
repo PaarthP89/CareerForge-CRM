@@ -18,9 +18,6 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('resumes', 'resumes', false)
 ON CONFLICT (id) DO NOTHING;
 
--- Enable RLS on storage.objects (already enabled by Supabase but explicit for clarity)
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-
 -- storage.objects: authenticated users can upload to resumes bucket
 DROP POLICY IF EXISTS "authenticated users can upload resumes" ON storage.objects;
 CREATE POLICY "authenticated users can upload resumes"
