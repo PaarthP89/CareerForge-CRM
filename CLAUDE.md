@@ -154,7 +154,7 @@ A subphase is only complete when, in order:
 ### 2.9 Proposed Changes (Pending Approval)
 *(Claude Code appends here. Human reviews, then manually promotes into 2.1–2.8 and clears the entry.)*
 
-- _(empty — populate during development)_
+- [2026-06-29] [Subphase 1.1]: Next.js project scaffold (`package.json`, `tsconfig.json`, `next.config.*`, `eslint.config.*`) does not exist yet — the lint/build commands in 1.3 and 2.8 cannot run until it is initialized. Recommend adding a Phase 0 or pre-Phase-1.1 step to scaffold the Next.js app (e.g., `npx create-next-app@latest`) so Definition of Done checks are executable from Phase 1.2 onward. — Reason: bare repo had only CLAUDE.md and README.md at start of 1.1; no npm workspace present.
 
 ---
 
@@ -163,7 +163,7 @@ A subphase is only complete when, in order:
 > Edit checkboxes only after Definition of Done (2.8) is fully satisfied and a human has approved. Each subphase = one Architect-prompt cycle.
 
 ### Phase 1: Database Setup & Storage Buckets
-- [ ] 1.1 Initialize Supabase Postgres schema (`jobs` table per 2.1).
+- [x] 1.1 Initialize Supabase Postgres schema (`jobs` table per 2.1).
 - [ ] 1.2 Enable RLS policies per 2.2; create private `resumes` Storage bucket.
 - [ ] 1.3 Verify DB connection via a minimal Next.js API route test; confirm service-role key is never imported client-side.
 
@@ -194,4 +194,4 @@ A subphase is only complete when, in order:
 
 *(Claude Code: append a dated entry here at the end of every session — what was built, what's still rough, what the next subphase needs to know. Free write, no approval needed.)*
 
-- `[no entries yet — first subphase not started]`
+- [2026-06-29] Phase 1.1 complete (pending human review): Created `supabase/migrations/20260629000000_create_jobs_table.sql` and `types/index.ts`. Next.js scaffold (`create-next-app@16.2.9`) was initialized with TypeScript strict mode, Tailwind v4, ESLint 9 flat config, and App Router. Added `@typescript-eslint/no-explicit-any: error` rule to `eslint.config.mjs` (not included by default in `eslint-config-next`). `npm run lint` and `npm run build` both pass clean. `npm test` not yet applicable (Vitest not installed — Phase 2.6). | Known issues: none. | Notes for next subphase (1.2): Supabase project must be linked (`supabase login` + `supabase link`) before running the migration. Phase 1.2 also needs the private `resumes` Storage bucket and RLS policies — will require `SUPABASE_SERVICE_ROLE_KEY` scoped to GitHub Actions only.
