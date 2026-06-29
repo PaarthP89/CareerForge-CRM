@@ -2,6 +2,7 @@ export type JobStream = 'internship' | 'new_grad';
 
 export interface Job {
   id: string;
+  user_id: string;
   title: string;
   company: string;
   url: string;

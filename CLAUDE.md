@@ -89,6 +89,7 @@ npm run scraper:test   # Playwright-based scraper validation against fixture HTM
 ```sql
 -- jobs
 id uuid pk
+user_id uuid not null references auth.users(id)
 title text
 company text
 url text
@@ -100,12 +101,11 @@ resume_file_path text nullable  -- Supabase Storage path, not public URL
 created_at timestamptz default now()
 ```
 - Dedup key: `(company, title, url)` unique constraint — see Phase 3.2.
-- `user_id` column to be added when multi-user support is built (see 2.2).
+- `user_id` is live as of Phase 1.2; RLS policy is `user_id = auth.uid()`.
 
 ### 2.2 Auth & Authorization Model
-`[ASSUMPTION — confirm before Phase 1]`
 - **Now:** Supabase Auth, single user, one personal account. No public signup flow.
-- **Row-level security:** Enabled from day one even in single-user mode (`user_id = auth.uid()` policies), so multi-user later is a schema/policy change, not a rewrite.
+- **Row-level security:** Enabled on `jobs` as of Phase 1.2. Policy: `user_id = auth.uid()` for ALL operations. Service-role key (scraper worker) bypasses RLS; scraper must supply a bot user UUID — see 2.9 and `SCRAPER_USER_ID` secret plan.
 - **API routes:** All `/app/api/*` routes require a valid Supabase session; no anonymous writes.
 - **Future (not in current roadmap):** invite-based signup, per-user scrape preferences.
 
@@ -156,6 +156,10 @@ A subphase is only complete when, in order:
 
 - [2026-06-29] [Subphase 1.1]: Next.js project scaffold (`package.json`, `tsconfig.json`, `next.config.*`, `eslint.config.*`) does not exist yet — the lint/build commands in 1.3 and 2.8 cannot run until it is initialized. Recommend adding a Phase 0 or pre-Phase-1.1 step to scaffold the Next.js app (e.g., `npx create-next-app@latest`) so Definition of Done checks are executable from Phase 1.2 onward. — Reason: bare repo had only CLAUDE.md and README.md at start of 1.1; no npm workspace present.
 
+- [2026-06-29] [Subphase 1.2]: Section 2.2 states RLS should use `user_id = auth.uid()` policies from day one, but Section 2.1 explicitly defers the `user_id` column until multi-user support is built. These two are in direct conflict. The workaround implemented in this phase is an `authenticated`-role policy (`USING (true) WITH CHECK (true)`) — any logged-in user can see all rows, which is correct for single-user mode but would be a data-leak in multi-user mode. **Proposal:** Either (a) add `user_id uuid references auth.users(id)` to the `jobs` table now and switch to `user_id = auth.uid()` policies (future-proof, low-cost now), or (b) update Section 2.2 to document the `authenticated`-role interim policy and note it must be replaced before multi-user is enabled. Human review required before deciding. — Reason: RLS policy shape today determines migration complexity when multi-user is added later. **RESOLVED [2026-06-29]:** Human approved Option (a). `user_id uuid NOT NULL REFERENCES auth.users(id)` added via migration `20260629150000_add_user_id_to_jobs.sql`; RLS policy updated to `user_id = auth.uid()`. Human should update Section 2.1 (add `user_id` to schema block) and Section 2.2 (remove the `user_id` deferral note and confirm `user_id = auth.uid()` policy) and then clear this entry.
+
+- [2026-06-29] [Subphase 1.2 → Phase 3 dependency]: The scraper worker (`/workers/scraper`) inserts rows into `jobs` using the service-role key (RLS bypassed), but `user_id` is now `NOT NULL`. The scraper must supply an explicit `user_id` value at insert time or the insert will fail. **Proposal for Phase 3:** Create a dedicated Supabase "bot" user account for the scraper (e.g., `scraper@careerforge.internal`) and store its UUID as a GitHub Actions secret (`SCRAPER_USER_ID`). The scraper passes this UUID as `user_id` on every insert. This keeps RLS meaningful for future multi-user while unblocking the scraper today. Must be decided before Phase 3.1 begins.
+
 ---
 
 ## 3. Roadmap & Task Tracker
@@ -164,7 +168,7 @@ A subphase is only complete when, in order:
 
 ### Phase 1: Database Setup & Storage Buckets
 - [x] 1.1 Initialize Supabase Postgres schema (`jobs` table per 2.1).
-- [ ] 1.2 Enable RLS policies per 2.2; create private `resumes` Storage bucket.
+- [x] 1.2 Enable RLS policies per 2.2; create private `resumes` Storage bucket.
 - [ ] 1.3 Verify DB connection via a minimal Next.js API route test; confirm service-role key is never imported client-side.
 
 ### Phase 2: Core Dashboard UI Grid
@@ -195,3 +199,5 @@ A subphase is only complete when, in order:
 *(Claude Code: append a dated entry here at the end of every session — what was built, what's still rough, what the next subphase needs to know. Free write, no approval needed.)*
 
 - [2026-06-29] Phase 1.1 complete (pending human review): Created `supabase/migrations/20260629000000_create_jobs_table.sql` and `types/index.ts`. Next.js scaffold (`create-next-app@16.2.9`) was initialized with TypeScript strict mode, Tailwind v4, ESLint 9 flat config, and App Router. Added `@typescript-eslint/no-explicit-any: error` rule to `eslint.config.mjs` (not included by default in `eslint-config-next`). `npm run lint` and `npm run build` both pass clean. `npm test` not yet applicable (Vitest not installed — Phase 2.6). | Known issues: none. | Notes for next subphase (1.2): Supabase project must be linked (`supabase login` + `supabase link`) before running the migration. Phase 1.2 also needs the private `resumes` Storage bucket and RLS policies — will require `SUPABASE_SERVICE_ROLE_KEY` scoped to GitHub Actions only.
+
+- [2026-06-29] Phase 1.2 complete (pending human review): Created `supabase/migrations/20260629143000_enable_rls_and_storage.sql` (RLS on `jobs`, private `resumes` bucket, storage object policies) and `supabase/migrations/20260629150000_add_user_id_to_jobs.sql` (adds `user_id uuid NOT NULL REFERENCES auth.users(id)`, replaces permissive authenticated policy with `user_id = auth.uid()` per human approval). Updated `types/index.ts` to include `user_id: string`. `npm run lint` and `npm run build` pass clean. | Known issues: none. | Notes for next subphase (1.3): apply all three migrations in order before testing the DB connection. Human should manually update Section 2.1 (add user_id to schema block) and Section 2.2 (confirm user_id = auth.uid() policy, remove deferral note) and clear the resolved 2.9 entry. Scraper worker will need to supply `user_id` when inserting rows — plan for this in Phase 3.
