@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "scraper:dev": "tsx --env-file=.env.local workers/scraper/index.ts",
+    "scraper:test": "echo 'Scraper fixture tests — implemented in Phase 3.2'"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -32,6 +34,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
+    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }
