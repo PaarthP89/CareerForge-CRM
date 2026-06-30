@@ -3,7 +3,6 @@
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ExternalLink } from 'lucide-react';
-import { getSupabaseClient } from '@/lib/supabase';
 import type { Job, JobStream } from '@/types';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -16,6 +15,7 @@ import {
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import ResumeCell from '@/components/dashboard/resume-cell';
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—';
@@ -42,19 +42,9 @@ export default function JobsTable({ initialJobs }: { initialJobs: Job[] }) {
     );
 
     try {
-      const supabase = getSupabaseClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
       const res = await fetch(`/api/jobs/${jobId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(session?.access_token
-            ? { Authorization: `Bearer ${session.access_token}` }
-            : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ applied: newValue }),
       });
 
@@ -75,6 +65,12 @@ export default function JobsTable({ initialJobs }: { initialJobs: Job[] }) {
         return next;
       });
     }
+  }
+
+  function handleResumeUploaded(jobId: string, path: string) {
+    setJobs((prev) =>
+      prev.map((j) => (j.id === jobId ? { ...j, resume_file_path: path } : j))
+    );
   }
 
   const internships = jobs.filter((j) => j.stream === 'internship');
@@ -101,6 +97,7 @@ export default function JobsTable({ initialJobs }: { initialJobs: Job[] }) {
             <TableHead className="w-28">Posted</TableHead>
             <TableHead className="w-28">Discovered</TableHead>
             <TableHead className="w-20 text-center">Applied</TableHead>
+            <TableHead className="w-32">Resume</TableHead>
             <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
@@ -124,6 +121,9 @@ export default function JobsTable({ initialJobs }: { initialJobs: Job[] }) {
                   disabled={pendingIds.has(job.id)}
                   aria-label={`Mark ${job.title} at ${job.company} as applied`}
                 />
+              </TableCell>
+              <TableCell>
+                <ResumeCell job={job} onUploaded={handleResumeUploaded} />
               </TableCell>
               <TableCell>
                 <a

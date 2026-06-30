@@ -30,8 +30,11 @@ export default async function DashboardPage() {
       <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
         <p className="text-foreground font-medium">Authentication Required</p>
         <p className="text-muted-foreground text-sm max-w-md">
-          No active session found. Sign in via the Supabase Dashboard, or seed
-          mock data by adding{' '}
+          No active session found.{' '}
+          <a href="/login" className="underline underline-offset-4 hover:text-foreground">
+            Sign in
+          </a>
+          , or seed mock data by adding{' '}
           <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">
             SUPABASE_SERVICE_ROLE_KEY
           </code>{' '}
