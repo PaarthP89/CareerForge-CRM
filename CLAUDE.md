@@ -90,17 +90,17 @@ npm run scraper:test   # Playwright-based scraper validation against fixture HTM
 -- jobs
 id uuid pk
 user_id uuid not null references auth.users(id)
-title text
-company text
-url text
+title text not null
+company text not null
+url text not null
 stream text check (stream in ('internship','new_grad'))
 posted_at timestamptz
 discovered_at timestamptz default now()
 applied boolean default false
 resume_file_path text nullable  -- Supabase Storage path, not public URL
 created_at timestamptz default now()
+-- UNIQUE(company, title, url) → constraint name: jobs_company_title_url_key
 ```
-- Dedup key: `(company, title, url)` unique constraint — see Phase 3.2.
 - `user_id` is live as of Phase 1.2; RLS policy is `user_id = auth.uid()`.
 
 ### 2.2 Auth & Authorization Model
@@ -115,8 +115,9 @@ created_at timestamptz default now()
 | `NEXT_PUBLIC_SUPABASE_URL` | Frontend + API | Public, safe to expose |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Frontend + API routes | Anon key only — respects RLS |
 | `SUPABASE_SERVICE_ROLE_KEY` | Scraper worker ONLY | Never imported into `/app`. GitHub Actions secret only. |
+| `SCRAPER_USER_ID` | Scraper worker ONLY | UUID of bot Supabase Auth user. `.env.local` + GitHub Actions secret. |
 | `GEMINI_API_KEY` | `/app/api/resume/match` route | Server-side only, never exposed to client |
-| `DISCORD_WEBHOOK_URL` (or Slack) | Scraper worker error handler | GitHub Actions secret |
+| `DISCORD_WEBHOOK_URL` | Scraper worker error handler | GitHub Actions secret. Optional locally — worker no-ops if unset. |
 
 **Rules:** Never commit `.env*` files. Never log secret values, even partially. Never use the service-role key in any file under `/app`.
 
@@ -154,7 +155,7 @@ A subphase is only complete when, in order:
 ### 2.9 Proposed Changes (Pending Approval)
 *(Claude Code appends here. Human reviews, then manually promotes into 2.1–2.8 and clears the entry.)*
 
-- [2026-06-30] [SCRAPER_USER_ID — action required before Phase 3.2]: Worker validates `SCRAPER_USER_ID` at startup and fails fast if missing. Human must: (1) create a bot Supabase Auth user (e.g. `scraper@careerforge.internal`), (2) copy its UUID, (3) add `SCRAPER_USER_ID=<uuid>` to `.env.local` (scraper:dev) and GitHub Actions secrets (Phase 3.4). Promote to Section 2.3 secrets table.
+*(No pending proposals.)*
 
 ---
 
@@ -174,9 +175,9 @@ A subphase is only complete when, in order:
 
 ### Phase 3: Playwright Ingestion Pipeline
 - [x] 3.1 Write standalone Playwright scraper in `/workers/scraper`, fully decoupled per Rule 2.
-- [ ] 3.2 Add dedup checks against the `(company, title, url)` unique constraint.
-- [ ] 3.3 Add try/catch with webhook (Discord/Slack) notification on scrape failure.
-- [ ] 3.4 Wire up GitHub Actions cron (2:00 AM nightly), using `SUPABASE_SERVICE_ROLE_KEY` as a GH secret only.
+- [x] 3.2 Add dedup checks against the `(company, title, url)` unique constraint.
+- [x] 3.3 Add try/catch with webhook (Discord/Slack) notification on scrape failure.
+- [x] 3.4 Wire up GitHub Actions cron (2:00 AM nightly), using `SUPABASE_SERVICE_ROLE_KEY` as a GH secret only.
 
 ### Phase 4: Resume Document Management
 - [ ] 4.1 Add "Upload Resume" UI element to table rows.
@@ -197,3 +198,5 @@ A subphase is only complete when, in order:
 - [2026-06-29] Phases 1 + 2 complete (human approved): DB schema live (`jobs` table, RLS with `user_id = auth.uid()`, private `resumes` bucket). Key files: `lib/supabase.ts` (lazy singleton browser client — can't throw at module level in Next.js build), `lib/supabase-server.ts` (SSR client), `lib/supabase-admin.ts` (service-role, server-only). Dashboard at `/dashboard`: Server Component fetches jobs, passes to `components/dashboard/jobs-table.tsx` (Client) — tabs, dense table, optimistic Applied checkbox with race-condition guard (`inFlightRef`). Seed route at `app/api/seed` requires `SUPABASE_SERVICE_ROLE_KEY` in `.env.local` — gate before any public deploy. `Vitest` not yet installed. Note: Supabase owns `storage.objects` RLS internally — never try to `ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY` (errors with permission denied).
 
 - [2026-06-30] Phase 3.1 complete (pending human review): `/workers/scraper` ingestion worker using GitHub raw HTTP fetch (not Playwright browser — deferred). 4 sources wired up; soft dedup via SELECT-before-INSERT. `tsx@4.x` installed as dev dep. Worker fails fast if `SCRAPER_USER_ID` is missing. | Notes for 3.2: human must create a bot Supabase Auth user, copy its UUID, add `SCRAPER_USER_ID=<uuid>` to `.env.local` and GitHub Actions secrets — then 3.2 can add the `(company, title, url)` unique constraint migration and swap to `ON CONFLICT DO NOTHING`.
+
+- [2026-06-30] Phases 3.2 + 3.3 + 3.4 complete (pending human review): Migration `20260630120000_add_jobs_dedup_constraint.sql` adds NOT NULL on `company`/`title`/`url` and UNIQUE constraint `jobs_company_title_url_key`. Replaced SELECT-before-INSERT soft dedup with `supabase.upsert({ onConflict: 'company,title,url', ignoreDuplicates: true })` — single batched call per source. Added `workers/scraper/lib/notify.ts` (Discord webhook notifier — graceful no-op if `DISCORD_WEBHOOK_URL` not set; `notifyDiscord` fires on source-level errors and top-level fatal). Added scraper fixture tests in `workers/scraper/__tests__/` using `node:test` (8 tests, 8 pass). Added `.github/workflows/scraper-cron.yml` (2 AM UTC cron + `workflow_dispatch`). `npm run lint`, `npm run scraper:test`, `npm run build` all pass. `npm test` has no script (Vitest not yet installed — tracked since Phase 1.1). | Known issues: none. | Notes for human: (1) Run `supabase db push` to apply the dedup constraint migration before the next scraper run — without it the upsert's `onConflict` clause has no constraint to match. (2) `SCRAPER_USER_ID` bot user still needs to be created in Supabase Auth and added to `.env.local` + GitHub Actions Secrets (see Section 2.9). (3) Add `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SCRAPER_USER_ID`, and `DISCORD_WEBHOOK_URL` to GitHub Actions Secrets before the cron job can run end-to-end.

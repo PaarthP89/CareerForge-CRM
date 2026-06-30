@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "scraper:dev": "tsx --env-file=.env.local workers/scraper/index.ts",
-    "scraper:test": "echo 'Scraper fixture tests — implemented in Phase 3.2'"
+    "scraper:test": "tsx workers/scraper/__tests__/parsers.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
