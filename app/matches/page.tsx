@@ -1,19 +1,13 @@
 import type { Metadata } from 'next';
 import { getSupabaseServerClient } from '@/lib/supabase-server';
-import ResumeEditor from '@/components/resume/resume-editor';
-import JobComparePanel from '@/components/resume/job-compare-panel';
+import MatchesList from '@/components/matches/matches-list';
 import NavLinks from '@/components/nav-links';
 
 export const metadata: Metadata = {
-  title: 'Resume — CareerForge CRM',
+  title: 'Matches — CareerForge CRM',
 };
 
-export default async function ResumePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ jobId?: string }>;
-}) {
-  const { jobId } = await searchParams;
+export default async function MatchesPage() {
   const supabase = await getSupabaseServerClient();
   const {
     data: { user },
@@ -25,9 +19,9 @@ export default async function ResumePage({
         <header className="mb-8 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">CareerForge CRM</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Resume Workspace</p>
+            <p className="text-muted-foreground text-sm mt-0.5">Resume Matches</p>
           </div>
-          <NavLinks current="resume" />
+          <NavLinks current="matches" />
         </header>
         <main>{content}</main>
       </div>
@@ -43,47 +37,31 @@ export default async function ResumePage({
           <a href="/login" className="underline underline-offset-4 hover:text-foreground">
             Sign in
           </a>{' '}
-          to edit your resume.
+          to view matches.
         </p>
       </div>
     );
   }
 
   const { data, error } = await supabase
-    .from('resumes')
-    .select('content')
+    .from('job_matches')
+    .select('id, job_id, score, reasoning, matched_at, jobs(title, company)')
     .eq('user_id', user.id)
-    .maybeSingle();
+    .order('score', { ascending: false });
 
   if (error) {
     return shell(
       <div className="flex flex-col items-center justify-center py-24 gap-2 text-center">
-        <p className="text-destructive font-medium">Failed to load resume</p>
+        <p className="text-destructive font-medium">Failed to load matches</p>
         <p className="text-muted-foreground text-sm">{error.message}</p>
       </div>
     );
   }
 
-  let comparePanel: React.ReactNode = null;
-  if (jobId) {
-    const { data: job } = await supabase
-      .from('jobs')
-      .select('id, title, company')
-      .eq('id', jobId)
-      .eq('user_id', user.id)
-      .maybeSingle();
+  const matches = (data ?? []).map((row) => ({
+    ...row,
+    jobs: Array.isArray(row.jobs) ? (row.jobs[0] ?? null) : row.jobs,
+  }));
 
-    if (job) {
-      comparePanel = (
-        <JobComparePanel jobId={job.id} jobTitle={job.title} jobCompany={job.company} />
-      );
-    }
-  }
-
-  return shell(
-    <>
-      {comparePanel}
-      <ResumeEditor initialContent={data?.content ?? ''} />
-    </>
-  );
+  return shell(<MatchesList initialMatches={matches} />);
 }

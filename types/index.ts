@@ -21,3 +21,14 @@ export interface Resume {
   content: string;
   updated_at: string;
 }
+
+export interface JobMatch {
+  id: string;
+  user_id: string;
+  job_id: string;
+  score: number;
+  reasoning: string | null;
+  missing_keywords: string[] | null;
+  jd_fetched: boolean;
+  matched_at: string;
+}

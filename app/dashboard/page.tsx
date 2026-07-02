@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { getSupabaseServerClient } from '@/lib/supabase-server';
 import type { Job } from '@/types';
 import JobsTable from '@/components/dashboard/jobs-table';
+import NavLinks from '@/components/nav-links';
 
 export const metadata: Metadata = {
   title: 'Dashboard — CareerForge CRM',
@@ -16,9 +17,12 @@ export default async function DashboardPage() {
   const shell = (content: React.ReactNode) => (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <header className="mb-8">
-          <h1 className="text-xl font-semibold tracking-tight">CareerForge CRM</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Job Search Tracker</p>
+        <header className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">CareerForge CRM</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">Job Search Tracker</p>
+          </div>
+          <NavLinks current="dashboard" />
         </header>
         <main>{content}</main>
       </div>

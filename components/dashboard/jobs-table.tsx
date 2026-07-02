@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { ExternalLink, Trash2, RotateCcw } from 'lucide-react';
+import { ExternalLink, Trash2, RotateCcw, GitCompare } from 'lucide-react';
 import type { Job, JobStream } from '@/types';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -215,6 +215,14 @@ export default function JobsTable({
                         aria-label={`Open ${job.title} at ${job.company} job listing`}
                       >
                         <ExternalLink className="size-4" />
+                      </a>
+                      <a
+                        href={`/resume?jobId=${job.id}`}
+                        className="inline-flex text-muted-foreground hover:text-foreground transition-colors"
+                        aria-label={`Compare resume against ${job.title} at ${job.company}`}
+                        title="Compare resume against this job"
+                      >
+                        <GitCompare className="size-4" />
                       </a>
                       <Button
                         variant="ghost"
