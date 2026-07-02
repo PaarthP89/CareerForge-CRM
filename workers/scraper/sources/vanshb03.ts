@@ -1,16 +1,9 @@
 import { fetchText } from '../lib/fetch.js';
-import { extractUrl, parseMarkdownTable } from '../lib/markdown.js';
+import { extractText, extractUrl, parseMarkdownTable } from '../lib/markdown.js';
 import type { RawListing } from '../types.js';
 
 const README_URL =
   'https://raw.githubusercontent.com/vanshb03/New-Grad-2027/main/README.md';
-
-function extractText(cell: string): string | null {
-  const match = cell.match(/\[([^\]]+)\]/);
-  if (match) return match[1].trim() || null;
-  const trimmed = cell.trim();
-  return trimmed || null;
-}
 
 export async function fetchVanshb03(): Promise<RawListing[]> {
   const text = await fetchText(README_URL);

@@ -1,18 +1,13 @@
 import { fetchText } from '../lib/fetch.js';
-import { extractUrl, parseMarkdownTable } from '../lib/markdown.js';
+import { extractText, extractUrl, parseMarkdownTable } from '../lib/markdown.js';
 import type { RawListing } from '../types.js';
 
+// USA internship listings were consolidated into README.md (FAANG+/Quant/Other
+// sections) — the old standalone INTERN_USA.md file no longer exists upstream.
 const INTERN_URL =
-  'https://raw.githubusercontent.com/speedyapply/2026-SWE-College-Jobs/main/INTERN_USA.md';
+  'https://raw.githubusercontent.com/speedyapply/2026-SWE-College-Jobs/main/README.md';
 const NEW_GRAD_URL =
   'https://raw.githubusercontent.com/speedyapply/2026-SWE-College-Jobs/main/NEW_GRAD_USA.md';
-
-function extractText(cell: string): string | null {
-  const match = cell.match(/\[([^\]]+)\]/);
-  if (match) return match[1].trim() || null;
-  const trimmed = cell.trim();
-  return trimmed || null;
-}
 
 function rowToListing(
   row: Record<string, string>,
@@ -85,13 +80,13 @@ export async function fetchSpeedyApply(): Promise<RawListing[]> {
   const internRows = parseMarkdownTable(internText);
 
   if (internRows.length === 0) {
-    console.warn('[scraper:speedyapply] 0 rows parsed from INTERN_USA.md');
+    console.warn('[scraper:speedyapply] 0 rows parsed from README.md (internships)');
   } else {
     const headers = Object.keys(internRows[0]);
     const canFilter = hasFallFilterableColumn(headers);
     if (!canFilter) {
       console.warn(
-        '[scraper:speedyapply] Term filtering not possible for INTERN_USA.md — including all rows'
+        '[scraper:speedyapply] Term filtering not possible for README.md — including all rows'
       );
     }
     for (const row of internRows) {

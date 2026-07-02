@@ -52,19 +52,36 @@ export default async function DashboardPage() {
     );
   }
 
-  const { data, error } = await supabase
-    .from('jobs')
-    .select('*')
-    .order('discovered_at', { ascending: false });
+  // PostgREST caps a single .select() at 1000 rows; fetching internship and
+  // new_grad separately ensures one stream can't starve the other once the
+  // table holds more rows than that combined cap.
+  const baseQuery = () =>
+    supabase
+      .from('jobs')
+      .select('*')
+      .order('discovered_at', { ascending: false })
+      .order('id', { ascending: false });
 
-  if (error) {
+  const [internshipsRes, newGradRes, trashRes] = await Promise.all([
+    baseQuery().eq('stream', 'internship').is('deleted_at', null),
+    baseQuery().eq('stream', 'new_grad').is('deleted_at', null),
+    baseQuery().not('deleted_at', 'is', null),
+  ]);
+
+  if (internshipsRes.error || newGradRes.error || trashRes.error) {
     return shell(
       <div className="flex flex-col items-center justify-center py-24 gap-2 text-center">
         <p className="text-destructive font-medium">Failed to load jobs</p>
-        <p className="text-muted-foreground text-sm">{error.message}</p>
+        <p className="text-muted-foreground text-sm">
+          {internshipsRes.error?.message ?? newGradRes.error?.message ?? trashRes.error?.message}
+        </p>
       </div>
     );
   }
 
-  return shell(<JobsTable initialJobs={(data as Job[]) ?? []} />);
+  const data = [...(internshipsRes.data ?? []), ...(newGradRes.data ?? [])];
+
+  return shell(
+    <JobsTable initialJobs={data as Job[]} initialTrash={(trashRes.data as Job[]) ?? []} />
+  );
 }

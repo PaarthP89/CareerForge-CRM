@@ -1,7 +1,12 @@
 export function extractUrl(cell: string): string | null {
-  const match = cell.match(/\[([^\]]*)\]\(([^)]+)\)/);
-  if (match) {
-    const url = match[2].trim();
+  const mdLink = cell.match(/\[([^\]]*)\]\(([^)]+)\)/);
+  if (mdLink) {
+    const url = mdLink[2].trim();
+    return url || null;
+  }
+  const htmlAnchor = cell.match(/<a\s[^>]*href=["']([^"']+)["']/i);
+  if (htmlAnchor) {
+    const url = htmlAnchor[1].trim();
     return url || null;
   }
   const trimmed = cell.trim();
@@ -9,6 +14,13 @@ export function extractUrl(cell: string): string | null {
     return trimmed;
   }
   return null;
+}
+
+export function extractText(cell: string): string | null {
+  const mdLink = cell.match(/\[([^\]]+)\]/);
+  if (mdLink) return mdLink[1].trim() || null;
+  const stripped = cell.replace(/<[^>]+>/g, '').trim();
+  return stripped || null;
 }
 
 function isSeparatorRow(line: string): boolean {

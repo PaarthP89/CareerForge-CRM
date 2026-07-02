@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseMarkdownTable, extractUrl } from '../lib/markdown.js';
+import { parseMarkdownTable, extractUrl, extractText } from '../lib/markdown.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(__dirname, 'fixtures');
@@ -46,6 +46,33 @@ test('extractUrl returns null for plain text with no link', () => {
 
 test('extractUrl returns null for empty string', () => {
   assert.strictEqual(extractUrl(''), null);
+});
+
+test('extractUrl extracts href from an HTML anchor cell', () => {
+  assert.strictEqual(
+    extractUrl('<a href="https://jobs.acme.com/123"><img src="x.png"/></a>'),
+    'https://jobs.acme.com/123'
+  );
+});
+
+test('extractText strips nested HTML tags from an anchor cell', () => {
+  assert.strictEqual(
+    extractText('<a href="https://acme.com"><strong>Acme Corp</strong></a>'),
+    'Acme Corp'
+  );
+});
+
+test('parseMarkdownTable + extractUrl/extractText handle a real-world HTML-anchor table', () => {
+  const md = readFileSync(join(fixturesDir, 'html-anchor-table-sample.md'), 'utf-8');
+  const rows = parseMarkdownTable(md);
+  assert.strictEqual(rows.length, 2);
+
+  const companyKey = Object.keys(rows[0]).find(k => k.includes('company'));
+  const postingKey = Object.keys(rows[0]).find(k => k.includes('posting'));
+  assert.ok(companyKey && postingKey);
+
+  assert.strictEqual(extractText(rows[0][companyKey]), 'TikTok');
+  assert.strictEqual(extractUrl(rows[0][postingKey]), 'https://lifeattiktok.com/search/123');
 });
 
 // --- Test group 3: SimplifyJobs filter logic ---

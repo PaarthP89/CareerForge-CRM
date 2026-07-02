@@ -12,4 +12,5 @@ export interface Job {
   applied: boolean;
   resume_file_path: string | null;
   created_at: string;
+  deleted_at: string | null;
 }
