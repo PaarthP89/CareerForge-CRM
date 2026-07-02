@@ -14,3 +14,10 @@ export interface Job {
   created_at: string;
   deleted_at: string | null;
 }
+
+export interface Resume {
+  id: string;
+  user_id: string;
+  content: string;
+  updated_at: string;
+}

@@ -89,11 +89,9 @@ export default function AddJobDialog({
         if (!next) resetForm();
       }}
     >
-      <DialogTrigger>
-        <Button variant="outline" size="sm">
-          <Plus className="size-4" />
-          Add Job
-        </Button>
+      <DialogTrigger render={<Button variant="outline" size="sm" />}>
+        <Plus className="size-4" />
+        Add Job
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
