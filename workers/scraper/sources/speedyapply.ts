@@ -20,8 +20,13 @@ function rowToListing(
     k => k.includes('role') || k.includes('title') || k.includes('position')
   );
   const linkKey = keys.find(
-    k => k.includes('apply') || k.includes('link') || k.includes('url')
+    k =>
+      k.includes('apply') ||
+      k.includes('link') ||
+      k.includes('url') ||
+      k.includes('posting')
   );
+  const dateKey = keys.find(k => k.includes('date'));
 
   const company = companyKey ? extractText(row[companyKey]) : null;
   const title = titleKey ? extractText(row[titleKey]) : null;
@@ -29,7 +34,14 @@ function rowToListing(
   let url: string | null = null;
   if (linkKey) url = extractUrl(row[linkKey]);
   if (!url) {
-    for (const val of Object.values(row)) {
+    // Never fall back onto the Company/Title/Date columns — those often carry
+    // their own <a> link (e.g. the company's homepage), which would otherwise
+    // get mistaken for the actual apply link.
+    const skipKeys = new Set(
+      [companyKey, titleKey, dateKey].filter((k): k is string => Boolean(k))
+    );
+    for (const [key, val] of Object.entries(row)) {
+      if (skipKeys.has(key)) continue;
       url = extractUrl(val);
       if (url) break;
     }
@@ -37,7 +49,6 @@ function rowToListing(
 
   if (!company || !title || !url) return null;
 
-  const dateKey = keys.find(k => k.includes('date'));
   let postedAt: Date | null = null;
   if (dateKey && row[dateKey]) {
     const parsed = new Date(row[dateKey]);

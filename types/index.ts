@@ -1,5 +1,7 @@
 export type JobStream = 'internship' | 'new_grad';
 
+export type UrlQuality = 'direct' | 'generic' | 'unknown';
+
 export interface Job {
   id: string;
   user_id: string;
@@ -13,6 +15,8 @@ export interface Job {
   resume_file_path: string | null;
   created_at: string;
   deleted_at: string | null;
+  url_quality: UrlQuality | null;
+  last_checked_at: string | null;
 }
 
 export interface Resume {
