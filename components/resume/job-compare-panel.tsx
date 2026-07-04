@@ -20,15 +20,7 @@ function scoreBadgeVariant(score: number): 'default' | 'secondary' | 'destructiv
   return 'destructive';
 }
 
-export default function JobComparePanel({
-  jobId,
-  jobTitle,
-  jobCompany,
-}: {
-  jobId: string;
-  jobTitle: string;
-  jobCompany: string;
-}) {
+export default function JobComparePanel({ jobId }: { jobId: string }) {
   const [status, setStatus] = useState<CompareStatus>('running');
   const [result, setResult] = useState<CompareResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -68,12 +60,7 @@ export default function JobComparePanel({
   }
 
   return (
-    <div className="mb-6 rounded-lg border border-border p-4">
-      <p className="text-sm text-muted-foreground mb-3">
-        Comparing against <span className="text-foreground font-medium">{jobTitle}</span> at{' '}
-        <span className="text-foreground font-medium">{jobCompany}</span>
-      </p>
-
+    <div className="py-1">
       {status === 'running' && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />

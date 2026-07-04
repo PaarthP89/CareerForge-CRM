@@ -1,19 +1,14 @@
 import type { Metadata } from 'next';
 import { getSupabaseServerClient } from '@/lib/supabase-server';
 import ResumeEditor from '@/components/resume/resume-editor';
-import JobComparePanel from '@/components/resume/job-compare-panel';
+import MatchResults from '@/components/resume/match-results';
 import NavLinks from '@/components/nav-links';
 
 export const metadata: Metadata = {
   title: 'Resume — CareerForge CRM',
 };
 
-export default async function ResumePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ jobId?: string }>;
-}) {
-  const { jobId } = await searchParams;
+export default async function ResumePage() {
   const supabase = await getSupabaseServerClient();
   const {
     data: { user },
@@ -43,47 +38,49 @@ export default async function ResumePage({
           <a href="/login" className="underline underline-offset-4 hover:text-foreground">
             Sign in
           </a>{' '}
-          to edit your resume.
+          to use the resume workspace.
         </p>
       </div>
     );
   }
 
-  const { data, error } = await supabase
-    .from('resumes')
-    .select('content')
-    .eq('user_id', user.id)
-    .maybeSingle();
+  const [{ data: resumeRow, error: resumeError }, { data: matchRows, error: matchesError }] =
+    await Promise.all([
+      supabase.from('resumes').select('content').eq('user_id', user.id).maybeSingle(),
+      supabase
+        .from('job_matches')
+        .select('id, job_id, score, reasoning, matched_at, jobs(title, company)')
+        .eq('user_id', user.id)
+        .order('score', { ascending: false }),
+    ]);
 
-  if (error) {
+  if (resumeError) {
     return shell(
       <div className="flex flex-col items-center justify-center py-24 gap-2 text-center">
         <p className="text-destructive font-medium">Failed to load resume</p>
-        <p className="text-muted-foreground text-sm">{error.message}</p>
+        <p className="text-muted-foreground text-sm">{resumeError.message}</p>
       </div>
     );
   }
 
-  let comparePanel: React.ReactNode = null;
-  if (jobId) {
-    const { data: job } = await supabase
-      .from('jobs')
-      .select('id, title, company')
-      .eq('id', jobId)
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (job) {
-      comparePanel = (
-        <JobComparePanel jobId={job.id} jobTitle={job.title} jobCompany={job.company} />
-      );
-    }
+  if (matchesError) {
+    return shell(
+      <div className="flex flex-col items-center justify-center py-24 gap-2 text-center">
+        <p className="text-destructive font-medium">Failed to load matches</p>
+        <p className="text-muted-foreground text-sm">{matchesError.message}</p>
+      </div>
+    );
   }
 
+  const matches = (matchRows ?? []).map((row) => ({
+    ...row,
+    jobs: Array.isArray(row.jobs) ? (row.jobs[0] ?? null) : row.jobs,
+  }));
+
   return shell(
-    <>
-      {comparePanel}
-      <ResumeEditor initialContent={data?.content ?? ''} />
-    </>
+    <div className="flex flex-col gap-8">
+      <ResumeEditor initialContent={resumeRow?.content ?? ''} />
+      <MatchResults initialMatches={matches} />
+    </div>
   );
 }

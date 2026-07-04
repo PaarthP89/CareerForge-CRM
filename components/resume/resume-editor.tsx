@@ -122,7 +122,7 @@ export default function ResumeEditor({ initialContent }: { initialContent: strin
   const overLimit = charCount > MAX_RESUME_CHARS;
 
   return (
-    <div className="flex flex-col gap-3 h-[calc(100vh-14rem)]">
+    <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between text-sm">
         <StatusIndicator status={status} errorMessage={errorMessage} onRetry={handleRetry} />
         <span className={overLimit ? 'text-destructive' : 'text-muted-foreground'}>
@@ -133,9 +133,9 @@ export default function ResumeEditor({ initialContent }: { initialContent: strin
       <Textarea
         value={content}
         onChange={handleChange}
-        placeholder="Paste or write your resume here…"
+        placeholder="Paste your resume here…"
         spellCheck={false}
-        className="flex-1 resize-none font-mono text-sm leading-relaxed"
+        className="h-64 resize-none font-mono text-sm leading-relaxed"
       />
     </div>
   );

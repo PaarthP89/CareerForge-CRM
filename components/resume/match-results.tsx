@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, GitCompare } from 'lucide-react';
+import { Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import JobComparePanel from '@/components/resume/job-compare-panel';
 
 interface MatchRow {
   id: string;
@@ -36,11 +37,12 @@ function scoreBadgeVariant(score: number): 'default' | 'secondary' | 'destructiv
   return 'destructive';
 }
 
-export default function MatchesList({ initialMatches }: { initialMatches: MatchRow[] }) {
+export default function MatchResults({ initialMatches }: { initialMatches: MatchRow[] }) {
   const router = useRouter();
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<RunSummary | null>(null);
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
 
   async function handleRun() {
     setRunning(true);
@@ -60,6 +62,10 @@ export default function MatchesList({ initialMatches }: { initialMatches: MatchR
     } finally {
       setRunning(false);
     }
+  }
+
+  function toggleExpanded(jobId: string) {
+    setExpandedJobId((current) => (current === jobId ? null : jobId));
   }
 
   return (
@@ -92,8 +98,8 @@ export default function MatchesList({ initialMatches }: { initialMatches: MatchR
 
       {initialMatches.length === 0 ? (
         <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
-          No matches yet. Click &ldquo;Run Match&rdquo; to score your active jobs against your
-          resume.
+          No matches yet. Save your resume above, then click &ldquo;Run Match&rdquo; to score
+          your active jobs against it.
         </div>
       ) : (
         <Table>
@@ -107,29 +113,49 @@ export default function MatchesList({ initialMatches }: { initialMatches: MatchR
             </TableRow>
           </TableHeader>
           <TableBody>
-            {initialMatches.map((match) => (
-              <TableRow key={match.id}>
-                <TableCell className="font-medium">{match.jobs?.company ?? '—'}</TableCell>
-                <TableCell className="text-muted-foreground">
-                  {match.jobs?.title ?? '—'}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={scoreBadgeVariant(match.score)}>{match.score}</Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground text-sm">
-                  {match.reasoning ?? '—'}
-                </TableCell>
-                <TableCell>
-                  <a
-                    href={`/resume?jobId=${match.job_id}`}
-                    className="inline-flex text-muted-foreground hover:text-foreground transition-colors"
-                    title="Deep-compare against this job"
-                  >
-                    <GitCompare className="size-4" />
-                  </a>
-                </TableCell>
-              </TableRow>
-            ))}
+            {initialMatches.map((match) => {
+              const isExpanded = expandedJobId === match.job_id;
+              return (
+                <Fragment key={match.id}>
+                  <TableRow>
+                    <TableCell className="font-medium">{match.jobs?.company ?? '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {match.jobs?.title ?? '—'}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={scoreBadgeVariant(match.score)}>{match.score}</Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {match.reasoning ?? '—'}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-7"
+                        aria-expanded={isExpanded}
+                        aria-label="Deep-compare against this job"
+                        title="Deep-compare against this job"
+                        onClick={() => toggleExpanded(match.job_id)}
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="size-4" />
+                        ) : (
+                          <ChevronDown className="size-4" />
+                        )}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                  {isExpanded && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="bg-muted/30">
+                        <JobComparePanel jobId={match.job_id} />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </Fragment>
+              );
+            })}
           </TableBody>
         </Table>
       )}

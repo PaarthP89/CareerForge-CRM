@@ -1,10 +1,9 @@
 const LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/resume', label: 'Resume' },
-  { href: '/matches', label: 'Matches' },
 ];
 
-export default function NavLinks({ current }: { current: 'dashboard' | 'resume' | 'matches' }) {
+export default function NavLinks({ current }: { current: 'dashboard' | 'resume' }) {
   return (
     <nav className="flex items-center gap-3 text-sm">
       {LINKS.map((link) => {
