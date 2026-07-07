@@ -16,10 +16,33 @@ export function extractUrl(cell: string): string | null {
   return null;
 }
 
+// Strips markdown emphasis wrappers (bold/italic/strikethrough) around an
+// already-extracted text value. Source READMEs (e.g. vanshb03) bold every
+// company name in plain markdown rather than HTML, which the HTML-tag strip
+// below never touches — left alone, the literal "**"/"__"/"~~" ends up
+// stored verbatim in the jobs table and rendered as-is on the dashboard.
+function stripMarkdownEmphasis(text: string): string {
+  let result = text;
+  let previous: string;
+  do {
+    previous = result;
+    result = result
+      .replace(/^\*\*\*(.+)\*\*\*$/, '$1')
+      .replace(/^___(.+)___$/, '$1')
+      .replace(/^\*\*(.+)\*\*$/, '$1')
+      .replace(/^__(.+)__$/, '$1')
+      .replace(/^~~(.+)~~$/, '$1')
+      .replace(/^\*(.+)\*$/, '$1')
+      .replace(/^_(.+)_$/, '$1')
+      .trim();
+  } while (result !== previous);
+  return result;
+}
+
 export function extractText(cell: string): string | null {
   const mdLink = cell.match(/\[([^\]]+)\]/);
-  if (mdLink) return mdLink[1].trim() || null;
-  const stripped = cell.replace(/<[^>]+>/g, '').trim();
+  if (mdLink) return stripMarkdownEmphasis(mdLink[1].trim()) || null;
+  const stripped = stripMarkdownEmphasis(cell.replace(/<[^>]+>/g, '').trim());
   return stripped || null;
 }
 

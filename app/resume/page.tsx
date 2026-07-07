@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { getSupabaseServerClient } from '@/lib/supabase-server';
+import { fetchAllRows } from '@/lib/supabase-pagination';
 import ResumeEditor from '@/components/resume/resume-editor';
 import MatchResults from '@/components/resume/match-results';
 import NavLinks from '@/components/nav-links';
@@ -47,11 +48,15 @@ export default async function ResumePage() {
   const [{ data: resumeRow, error: resumeError }, { data: matchRows, error: matchesError }] =
     await Promise.all([
       supabase.from('resumes').select('content').eq('user_id', user.id).maybeSingle(),
-      supabase
-        .from('job_matches')
-        .select('id, job_id, score, reasoning, matched_at, jobs(title, company)')
-        .eq('user_id', user.id)
-        .order('score', { ascending: false }),
+      fetchAllRows((from, to) =>
+        supabase
+          .from('job_matches')
+          .select('id, job_id, score, reasoning, matched_at, jobs(title, company)')
+          .eq('user_id', user.id)
+          .order('score', { ascending: false })
+          .order('id', { ascending: true })
+          .range(from, to)
+      ),
     ]);
 
   if (resumeError) {

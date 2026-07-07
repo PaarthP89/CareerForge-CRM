@@ -38,6 +38,34 @@ interface JobRow {
   url: string;
 }
 
+// PostgREST caps a single .select() at 1000 rows regardless of .limit() —
+// a requested batch size above that would otherwise silently truncate to
+// 1000 with no error, so page with .range() until either the requested
+// limit or the actual row count is reached.
+async function fetchBatch(
+  supabase: ReturnType<typeof getServiceRoleSupabaseClient>,
+  limit: number
+): Promise<JobRow[]> {
+  const PAGE_SIZE = 1000;
+  const all: JobRow[] = [];
+  for (let from = 0; from < limit; from += PAGE_SIZE) {
+    const to = Math.min(from + PAGE_SIZE, limit) - 1;
+    const { data, error } = await supabase
+      .from('jobs')
+      .select('id,title,company,url')
+      .is('deleted_at', null)
+      .order('last_checked_at', { ascending: true, nullsFirst: true })
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) {
+      throw new Error(`Failed to fetch jobs batch: ${error.message}`);
+    }
+    all.push(...((data ?? []) as JobRow[]));
+    if (!data || data.length < to - from + 1) break;
+  }
+  return all;
+}
+
 async function main(): Promise<void> {
   validateEnv();
 
@@ -45,18 +73,7 @@ async function main(): Promise<void> {
   const allowLlm = isLlmAvailable();
   const limit = batchSize();
 
-  const { data: jobs, error: fetchError } = await supabase
-    .from('jobs')
-    .select('id,title,company,url')
-    .is('deleted_at', null)
-    .order('last_checked_at', { ascending: true, nullsFirst: true })
-    .limit(limit);
-
-  if (fetchError) {
-    throw new Error(`Failed to fetch jobs batch: ${fetchError.message}`);
-  }
-
-  const batch = (jobs ?? []) as JobRow[];
+  const batch = await fetchBatch(supabase, limit);
   console.log(`[link-health] Checking ${batch.length} job(s) (batch size ${limit})`);
 
   let checked = 0;
@@ -66,10 +83,10 @@ async function main(): Promise<void> {
 
   await runWithConcurrency(batch, CHECK_CONCURRENCY, async (job) => {
     const now = new Date().toISOString();
-    const fetchedText = await fetchTextWithTimeout(job.url, FETCH_TIMEOUT_MS);
-    if (!fetchedText) fetchFailures++;
+    const fetched = await fetchTextWithTimeout(job.url, FETCH_TIMEOUT_MS);
+    if (!fetched.text) fetchFailures++;
 
-    const liveness = await checkListingLiveness(fetchedText, job.title, job.company, allowLlm);
+    const liveness = await checkListingLiveness(fetched, job.title, job.company, allowLlm);
 
     if (liveness === 'dead') {
       const { error } = await supabase
@@ -88,7 +105,8 @@ async function main(): Promise<void> {
 
     const urlQuality = await classifyUrlQuality(
       job.url,
-      fetchedText,
+      fetched.text,
+      fetched.jobPostings,
       job.title,
       job.company,
       allowLlm

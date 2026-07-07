@@ -1,4 +1,5 @@
 import { chromium, type Browser } from 'playwright';
+import { extractJobPostings, type JobPostingSignal } from './json-ld.js';
 
 const MAX_EXTRACTED_CHARS = 20_000;
 const MIN_VIABLE_CHARS = 200;
@@ -36,11 +37,72 @@ export function extractReadableText(html: string): string {
   return collapsed.slice(0, MAX_EXTRACTED_CHARS);
 }
 
+/**
+ * The <title> tag survives independently of extractReadableText, which
+ * folds it into the general text soup — but it's a strong, cheap signal on
+ * its own: a page whose title has nothing to do with the job/company it's
+ * supposed to be (e.g. a generic "Find Your Dream Job" homepage) is a sign
+ * we've been redirected somewhere that isn't the actual posting.
+ */
+export function extractTitleTag(html: string): string | null {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (!match) return null;
+  const decoded = decodeEntities(match[1].replace(/\s+/g, ' ').trim());
+  return decoded.length > 0 ? decoded : null;
+}
+
 export function isViableJobDescription(text: string): boolean {
   return text.length >= MIN_VIABLE_CHARS;
 }
 
-async function fetchPlain(url: string, timeoutMs: number): Promise<string | null> {
+/**
+ * No amount of retrying ever fixes a syntactically invalid URL. Note the
+ * WHATWG URL parser is lenient enough to "fix" a malformed source like
+ * "https:/.workable.com/..." (single slash) into a technically-parseable
+ * URL with hostname ".workable.com" instead of throwing — that's not a real,
+ * resolvable domain, so the hostname itself needs its own sanity check.
+ */
+export function isFetchableUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname;
+    return host.length > 0 && !host.startsWith('.') && !host.startsWith('-') && host.includes('.');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 'dns' is a much stronger signal than 'timeout'/'other' — a domain that no
+ * longer resolves at all (vs. a slow/blocked/transient response) means the
+ * whole site is gone, not just this one page. Only 'dns' is ever treated as
+ * a confident dead-listing signal by the caller, and only when it's
+ * confirmed on both the plain-fetch and browser-fallback attempts.
+ */
+type FetchFailureReason = 'dns' | 'timeout' | 'other' | null;
+
+interface PlainFetchResult {
+  html: string | null;
+  status: number | null;
+  failureReason: FetchFailureReason;
+}
+
+function classifyFetchError(err: unknown): FetchFailureReason {
+  if (err instanceof Error && err.name === 'AbortError') return 'timeout';
+  const cause = err instanceof Error ? (err.cause as { code?: string } | undefined) : undefined;
+  if (cause?.code === 'ENOTFOUND' || cause?.code === 'EAI_AGAIN') return 'dns';
+  return 'other';
+}
+
+function classifyPlaywrightError(err: unknown): FetchFailureReason {
+  const message = err instanceof Error ? err.message : String(err);
+  if (/ERR_NAME_NOT_RESOLVED|ERR_NAME_RESOLUTION_FAILED/i.test(message)) return 'dns';
+  if (/Timeout.*exceeded|ERR_TIMED_OUT/i.test(message)) return 'timeout';
+  return 'other';
+}
+
+async function fetchPlain(url: string, timeoutMs: number): Promise<PlainFetchResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -48,10 +110,10 @@ async function fetchPlain(url: string, timeoutMs: number): Promise<string | null
       signal: controller.signal,
       headers: { 'User-Agent': USER_AGENT },
     });
-    if (!res.ok) return null;
-    return await res.text();
-  } catch {
-    return null;
+    if (!res.ok) return { html: null, status: res.status, failureReason: null };
+    return { html: await res.text(), status: res.status, failureReason: null };
+  } catch (err) {
+    return { html: null, status: null, failureReason: classifyFetchError(err) };
   } finally {
     clearTimeout(timer);
   }
@@ -95,14 +157,14 @@ function releaseBrowserSlot(): void {
   }
 }
 
-async function fetchWithBrowser(url: string, timeoutMs: number): Promise<string | null> {
+async function fetchWithBrowser(url: string, timeoutMs: number): Promise<PlainFetchResult> {
   await acquireBrowserSlot();
   try {
     const browser = await getBrowser();
     const context = await browser.newContext({ userAgent: USER_AGENT });
     try {
       const page = await context.newPage();
-      await page.goto(url, { timeout: timeoutMs, waitUntil: 'domcontentloaded' });
+      const response = await page.goto(url, { timeout: timeoutMs, waitUntil: 'domcontentloaded' });
       try {
         // Best-effort: many SPAs render their real content shortly after
         // domcontentloaded. Some pages never go fully idle (analytics,
@@ -112,15 +174,39 @@ async function fetchWithBrowser(url: string, timeoutMs: number): Promise<string 
       } catch {
         // ignore — fall through to page.content() below
       }
-      return await page.content();
+      return { html: await page.content(), status: response?.status() ?? null, failureReason: null };
     } finally {
       await context.close();
     }
-  } catch {
-    return null;
+  } catch (err) {
+    return { html: null, status: null, failureReason: classifyPlaywrightError(err) };
   } finally {
     releaseBrowserSlot();
   }
+}
+
+export interface FetchedPage {
+  text: string | null;
+  /**
+   * HTTP status from whichever attempt (plain fetch or browser nav) actually
+   * reached the server — a 404/410 here is a deterministic "this listing is
+   * gone" signal that needs no keyword matching or LLM call at all.
+   */
+  status: number | null;
+  /** The URL itself was never a well-formed http(s) URL — no fetch was attempted. */
+  malformed: boolean;
+  /** The <title> tag, kept separate from the body text extraction. */
+  pageTitle: string | null;
+  /**
+   * True only when both the plain fetch AND the browser fallback independently
+   * failed to resolve the domain at all (DNS lookup failure) — a much stronger,
+   * zero-cost "this is gone" signal than a generic timeout/block, since the
+   * whole domain no longer exists rather than just this one page being slow
+   * or bot-walled.
+   */
+  dnsFailed: boolean;
+  /** schema.org/JobPosting entries found in the page's JSON-LD, if any. */
+  jobPostings: JobPostingSignal[];
 }
 
 /**
@@ -129,21 +215,54 @@ async function fetchWithBrowser(url: string, timeoutMs: number): Promise<string 
  * isn't viable — i.e. likely a JS-rendered shell or a bot-detection wall that
  * returns something other than the real page to a non-browser client.
  * Returns extracted readable text (not raw HTML) either way, or null if
- * neither attempt produces a viable page.
+ * neither attempt produces a viable page — plus the HTTP status of whichever
+ * attempt actually got a response, so callers can treat 404/410 as dead
+ * without relying on the page's prose.
  */
 export async function fetchTextWithTimeout(
   url: string,
   timeoutMs: number
-): Promise<string | null> {
-  const plainHtml = await fetchPlain(url, timeoutMs);
-  if (plainHtml) {
-    const extracted = extractReadableText(plainHtml);
-    if (isViableJobDescription(extracted)) return extracted;
+): Promise<FetchedPage> {
+  if (!isFetchableUrl(url)) {
+    return {
+      text: null,
+      status: null,
+      malformed: true,
+      pageTitle: null,
+      dnsFailed: false,
+      jobPostings: [],
+    };
   }
 
-  const renderedHtml = await fetchWithBrowser(url, timeoutMs);
-  if (!renderedHtml) return null;
+  const plain = await fetchPlain(url, timeoutMs);
+  if (plain.html) {
+    const extracted = extractReadableText(plain.html);
+    if (isViableJobDescription(extracted)) {
+      return {
+        text: extracted,
+        status: plain.status,
+        malformed: false,
+        pageTitle: extractTitleTag(plain.html),
+        dnsFailed: false,
+        jobPostings: extractJobPostings(plain.html),
+      };
+    }
+  }
 
-  const extracted = extractReadableText(renderedHtml);
-  return isViableJobDescription(extracted) ? extracted : null;
+  const rendered = await fetchWithBrowser(url, timeoutMs);
+  const status = rendered.status ?? plain.status;
+  const dnsFailed = plain.failureReason === 'dns' && rendered.failureReason === 'dns';
+  if (!rendered.html) {
+    return { text: null, status, malformed: false, pageTitle: null, dnsFailed, jobPostings: [] };
+  }
+
+  const extracted = extractReadableText(rendered.html);
+  return {
+    text: isViableJobDescription(extracted) ? extracted : null,
+    status,
+    dnsFailed,
+    malformed: false,
+    pageTitle: extractTitleTag(rendered.html),
+    jobPostings: extractJobPostings(rendered.html),
+  };
 }

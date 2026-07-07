@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { getSupabaseServerClient } from '@/lib/supabase-server';
+import { fetchAllRows } from '@/lib/supabase-pagination';
 import type { Job } from '@/types';
 import JobsTable from '@/components/dashboard/jobs-table';
 import NavLinks from '@/components/nav-links';
@@ -56,9 +57,8 @@ export default async function DashboardPage() {
     );
   }
 
-  // PostgREST caps a single .select() at 1000 rows; fetching internship and
-  // new_grad separately ensures one stream can't starve the other once the
-  // table holds more rows than that combined cap.
+  // Fetching internship and new_grad separately ensures one stream can't
+  // starve the other while paging.
   const baseQuery = () =>
     supabase
       .from('jobs')
@@ -67,9 +67,13 @@ export default async function DashboardPage() {
       .order('id', { ascending: false });
 
   const [internshipsRes, newGradRes, trashRes] = await Promise.all([
-    baseQuery().eq('stream', 'internship').is('deleted_at', null),
-    baseQuery().eq('stream', 'new_grad').is('deleted_at', null),
-    baseQuery().not('deleted_at', 'is', null),
+    fetchAllRows<Job>((from, to) =>
+      baseQuery().eq('stream', 'internship').is('deleted_at', null).range(from, to)
+    ),
+    fetchAllRows<Job>((from, to) =>
+      baseQuery().eq('stream', 'new_grad').is('deleted_at', null).range(from, to)
+    ),
+    fetchAllRows<Job>((from, to) => baseQuery().not('deleted_at', 'is', null).range(from, to)),
   ]);
 
   if (internshipsRes.error || newGradRes.error || trashRes.error) {
@@ -83,9 +87,7 @@ export default async function DashboardPage() {
     );
   }
 
-  const data = [...(internshipsRes.data ?? []), ...(newGradRes.data ?? [])];
+  const data = [...internshipsRes.data, ...newGradRes.data];
 
-  return shell(
-    <JobsTable initialJobs={data as Job[]} initialTrash={(trashRes.data as Job[]) ?? []} />
-  );
+  return shell(<JobsTable initialJobs={data} initialTrash={trashRes.data} />);
 }

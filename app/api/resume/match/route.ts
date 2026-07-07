@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient } from '@/lib/supabase-server';
+import { fetchAllRows } from '@/lib/supabase-pagination';
 import { generateText, parseJsonResponse, GeminiJsonParseError } from '@/lib/gemini';
 
 const BATCH_SIZE = 75;
@@ -107,11 +108,15 @@ export async function POST() {
     return NextResponse.json({ error: 'No resume text saved yet' }, { status: 400 });
   }
 
-  const { data: jobs, error: jobsError } = await supabase
-    .from('jobs')
-    .select('id, title')
-    .eq('user_id', user.id)
-    .is('deleted_at', null);
+  const { data: jobs, error: jobsError } = await fetchAllRows<{ id: string; title: string }>(
+    (from, to) =>
+      supabase
+        .from('jobs')
+        .select('id, title')
+        .eq('user_id', user.id)
+        .is('deleted_at', null)
+        .range(from, to)
+  );
 
   if (jobsError) {
     return NextResponse.json({ error: jobsError.message }, { status: 500 });
@@ -233,15 +238,19 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { data, error } = await supabase
-    .from('job_matches')
-    .select('id, job_id, score, reasoning, matched_at, jobs(title, company)')
-    .eq('user_id', user.id)
-    .order('score', { ascending: false });
+  const { data, error } = await fetchAllRows((from, to) =>
+    supabase
+      .from('job_matches')
+      .select('id, job_id, score, reasoning, matched_at, jobs(title, company)')
+      .eq('user_id', user.id)
+      .order('score', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, to)
+  );
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ matches: data ?? [] });
+  return NextResponse.json({ matches: data });
 }

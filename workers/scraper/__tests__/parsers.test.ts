@@ -62,6 +62,19 @@ test('extractText strips nested HTML tags from an anchor cell', () => {
   );
 });
 
+test('extractText strips plain-markdown bold wrapping (vanshb03-style cells)', () => {
+  assert.strictEqual(extractText('**Uber Technologies, Inc.**'), 'Uber Technologies, Inc.');
+});
+
+test('extractText strips italic and strikethrough markdown wrapping', () => {
+  assert.strictEqual(extractText('_Acme Corp_'), 'Acme Corp');
+  assert.strictEqual(extractText('~~Acme Corp~~'), 'Acme Corp');
+});
+
+test('extractText does not touch internal asterisks that are not a wrapper', () => {
+  assert.strictEqual(extractText('R&D * Special Projects'), 'R&D * Special Projects');
+});
+
 test('parseMarkdownTable + extractUrl/extractText handle a real-world HTML-anchor table', () => {
   const md = readFileSync(join(fixturesDir, 'html-anchor-table-sample.md'), 'utf-8');
   const rows = parseMarkdownTable(md);

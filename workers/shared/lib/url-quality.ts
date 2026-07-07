@@ -1,5 +1,7 @@
-import { generateText } from './llm.js';
+import { generateText, LlmRateLimitError } from './llm.js';
 import { parseJsonResponse, LlmJsonParseError } from './json.js';
+import { matchesJobPosting, type JobPostingSignal } from './json-ld.js';
+import { classifyDirectVsGeneric } from './text-classifier.js';
 
 export type UrlQuality = 'direct' | 'generic' | 'unknown';
 
@@ -40,13 +42,15 @@ const DIRECT_SIGNALS = [
   /cover\s+letter/i,
 ];
 
-const GENERIC_SIGNALS = [
+export const GENERIC_SIGNALS = [
   /browse\s+all\s+(jobs|openings|positions)/i,
   /search\s+(open\s+)?(jobs|positions|openings)/i,
   /view\s+all\s+(jobs|openings|positions)/i,
   /join\s+our\s+talent\s+(community|network)/i,
   /life\s+at\s+/i,
   /our\s+culture/i,
+  /find\s+your\s+dream\s+job/i,
+  /discover\s+your\s+next\s+opportunity/i,
 ];
 
 function classifyByHost(url: string): UrlQuality {
@@ -100,7 +104,9 @@ Respond with ONLY strict JSON, no other text, no markdown fences:
     }
     return 'unknown';
   } catch (err) {
-    if (!(err instanceof LlmJsonParseError)) {
+    if (err instanceof LlmRateLimitError) {
+      console.error(`[url-quality] ${err.message} — classifying as 'unknown' for this listing`);
+    } else if (!(err instanceof LlmJsonParseError)) {
       console.error('[url-quality] LLM classification call failed:', err);
     }
     return 'unknown';
@@ -108,13 +114,18 @@ Respond with ONLY strict JSON, no other text, no markdown fences:
 }
 
 /**
- * Layered classification: free host check first, then cheap keyword heuristics
- * on already-fetched text, then an LLM call only if both prior layers are
- * inconclusive and the caller allows it (cost control).
+ * Layered classification, cheapest/most-certain first:
+ *   1. known ATS host           — free, no fetch needed at all
+ *   2. matching JobPosting JSON-LD — free, page's own structured data says so
+ *   3. keyword heuristics       — free, cheap regex over already-fetched text
+ *   4. our own trained classifier — free, no network, no LLM (see text-classifier.ts)
+ *   5. LLM call                 — only if every free layer above was inconclusive
+ *                                  and the caller allows it (cost control)
  */
 export async function classifyUrlQuality(
   url: string,
   fetchedText: string | null,
+  jobPostings: JobPostingSignal[],
   title: string,
   company: string,
   allowLlm: boolean
@@ -122,10 +133,15 @@ export async function classifyUrlQuality(
   const hostResult = classifyByHost(url);
   if (hostResult === 'direct') return 'direct';
 
+  if (matchesJobPosting(jobPostings, title, company)) return 'direct';
+
   if (!fetchedText) return 'unknown';
 
   const contentResult = classifyByContent(fetchedText);
   if (contentResult !== 'unknown') return contentResult;
+
+  const ownModelResult = classifyDirectVsGeneric(fetchedText);
+  if (ownModelResult) return ownModelResult;
 
   if (!allowLlm) return 'unknown';
 

@@ -171,10 +171,10 @@ async function runSource(
         return;
       }
 
-      const fetchedText = await fetchTextWithTimeout(listing.url, CANDIDATE_FETCH_TIMEOUT_MS);
+      const fetched = await fetchTextWithTimeout(listing.url, CANDIDATE_FETCH_TIMEOUT_MS);
 
       const liveness = await checkListingLiveness(
-        fetchedText,
+        fetched,
         listing.title,
         listing.company,
         allowLlm
@@ -186,7 +186,8 @@ async function runSource(
 
       const urlQuality = await classifyUrlQuality(
         listing.url,
-        fetchedText,
+        fetched.text,
+        fetched.jobPostings,
         listing.title,
         listing.company,
         allowLlm

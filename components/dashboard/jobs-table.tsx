@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { ExternalLink, Trash2, RotateCcw, GitCompare } from 'lucide-react';
+import { ExternalLink, Trash2, RotateCcw, GitCompare, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Job, JobStream } from '@/types';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -21,12 +21,26 @@ import AddJobDialog from '@/components/dashboard/add-job-dialog';
 
 type ViewTab = JobStream | 'trash';
 
+const PAGE_SIZE = 50;
+
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—';
   return new Date(dateStr).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+  });
+}
+
+// Sweep-confirmed "generic" links (the URL resolves to a careers homepage/
+// search page, not the specific posting) sink to the bottom — everything
+// else (unswept, direct, or merely inconclusive) keeps its normal
+// discovered-date order.
+function sortForDisplay(subset: Job[]): Job[] {
+  return [...subset].sort((a, b) => {
+    const aFlagged = a.url_quality === 'generic' ? 1 : 0;
+    const bFlagged = b.url_quality === 'generic' ? 1 : 0;
+    return aFlagged - bFlagged;
   });
 }
 
@@ -41,6 +55,11 @@ export default function JobsTable({
   const [trash, setTrash] = useState<Job[]>(initialTrash);
   const [activeTab, setActiveTab] = useState<ViewTab>('internship');
   const [pendingIds, setPendingIds] = useState(new Set<string>());
+  const [page, setPage] = useState<Record<ViewTab, number>>({
+    internship: 1,
+    new_grad: 1,
+    trash: 1,
+  });
   const inFlightRef = useRef(new Set<string>());
 
   async function handleAppliedChange(jobId: string, newValue: boolean) {
@@ -144,7 +163,7 @@ export default function JobsTable({
   const internships = jobs.filter((j) => j.stream === 'internship');
   const newGrad = jobs.filter((j) => j.stream === 'new_grad');
 
-  function renderTable(subset: Job[], mode: 'active' | 'trash') {
+  function renderTable(subset: Job[], mode: 'active' | 'trash', tab: ViewTab) {
     if (subset.length === 0) {
       return (
         <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
@@ -162,8 +181,18 @@ export default function JobsTable({
       );
     }
 
+    const sorted = mode === 'active' ? sortForDisplay(subset) : subset;
+    const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+    const currentPage = Math.min(page[tab], totalPages);
+    const pageItems = sorted.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+    function goToPage(next: number) {
+      setPage((prev) => ({ ...prev, [tab]: Math.min(Math.max(next, 1), totalPages) }));
+    }
+
     return (
-      <Table>
+      <div>
+        <Table>
         <TableHeader>
           <TableRow>
             <TableHead className="w-36">Company</TableHead>
@@ -180,9 +209,22 @@ export default function JobsTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {subset.map((job) => (
+          {pageItems.map((job) => (
             <TableRow key={job.id}>
-              <TableCell className="font-medium">{job.company}</TableCell>
+              <TableCell className="font-medium">
+                <div className="flex items-center gap-1.5">
+                  {job.company}
+                  {job.url_quality === 'generic' && (
+                    <Badge
+                      variant="outline"
+                      className="text-amber-600 border-amber-600/40 dark:text-amber-400 dark:border-amber-400/40"
+                      title="Sweep found this link points to a generic careers page, not the specific posting"
+                    >
+                      Unverified link
+                    </Badge>
+                  )}
+                </div>
+              </TableCell>
               <TableCell className="text-muted-foreground">{job.title}</TableCell>
               <TableCell className="text-muted-foreground text-xs">
                 {formatDate(job.posted_at)}
@@ -252,7 +294,37 @@ export default function JobsTable({
             </TableRow>
           ))}
         </TableBody>
-      </Table>
+        </Table>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between gap-2 mt-3 text-sm text-muted-foreground">
+            <span>
+              Page {currentPage} of {totalPages} ({sorted.length} total)
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="size-7"
+                disabled={currentPage <= 1}
+                aria-label="Previous page"
+                onClick={() => goToPage(currentPage - 1)}
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="size-7"
+                disabled={currentPage >= totalPages}
+                aria-label="Next page"
+                onClick={() => goToPage(currentPage + 1)}
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -280,9 +352,11 @@ export default function JobsTable({
           <TabsTrigger value="trash">Trash</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="internship">{renderTable(internships, 'active')}</TabsContent>
-        <TabsContent value="new_grad">{renderTable(newGrad, 'active')}</TabsContent>
-        <TabsContent value="trash">{renderTable(trash, 'trash')}</TabsContent>
+        <TabsContent value="internship">
+          {renderTable(internships, 'active', 'internship')}
+        </TabsContent>
+        <TabsContent value="new_grad">{renderTable(newGrad, 'active', 'new_grad')}</TabsContent>
+        <TabsContent value="trash">{renderTable(trash, 'trash', 'trash')}</TabsContent>
       </Tabs>
     </div>
   );
