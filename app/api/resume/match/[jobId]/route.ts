@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient } from '@/lib/supabase-server';
-import { generateText, parseJsonResponse, GeminiJsonParseError } from '@/lib/gemini';
+import { generateText, parseJsonResponse, GeminiJsonParseError, isLlmAvailable } from '@/lib/gemini';
 import { extractReadableText, isViableJobDescription } from '@/lib/html';
 
 const FETCH_TIMEOUT_MS = 10_000;
@@ -98,8 +98,11 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!process.env.GEMINI_API_KEY) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY is not configured' }, { status: 500 });
+  if (!isLlmAvailable()) {
+    return NextResponse.json(
+      { error: 'No LLM provider configured (set GEMINI_API_KEY or GROQ_API_KEYS)' },
+      { status: 500 }
+    );
   }
 
   const { data: job, error: jobError } = await supabase

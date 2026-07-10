@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient } from '@/lib/supabase-server';
 import { fetchAllRows } from '@/lib/supabase-pagination';
-import { generateText, parseJsonResponse, GeminiJsonParseError } from '@/lib/gemini';
+import { generateText, parseJsonResponse, GeminiJsonParseError, isLlmAvailable } from '@/lib/gemini';
 
-const BATCH_SIZE = 75;
+// Every prompt re-embeds the full resume text, so batches must stay well
+// under Groq's free-tier 6K-token/minute-per-key ceiling once the resume,
+// the titles, and the JSON completion output are all counted together.
+const BATCH_SIZE = 30;
 const MAX_CONCURRENT_BATCHES = 3;
 
 interface PreFilterResponse {
@@ -89,8 +92,11 @@ export async function POST() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!process.env.GEMINI_API_KEY) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY is not configured' }, { status: 500 });
+  if (!isLlmAvailable()) {
+    return NextResponse.json(
+      { error: 'No LLM provider configured (set GEMINI_API_KEY or GROQ_API_KEYS)' },
+      { status: 500 }
+    );
   }
 
   const { data: resumeRow, error: resumeError } = await supabase
@@ -139,23 +145,29 @@ export async function POST() {
 
   const distinctTitles = Array.from(titleToJobIds.values()).map((v) => v.displayTitle);
 
-  let survivorKeys = new Set(titleToJobIds.keys());
-  try {
-    const preFilterRaw = await generateText(buildPreFilterPrompt(resumeContent, distinctTitles));
-    const preFilterParsed = parseJsonResponse<PreFilterResponse>(preFilterRaw);
-    if (Array.isArray(preFilterParsed.irrelevant_titles)) {
-      const irrelevantKeys = new Set(
-        preFilterParsed.irrelevant_titles
-          .filter((t): t is string => typeof t === 'string')
-          .map(normalizeTitle)
-      );
-      survivorKeys = new Set(
-        Array.from(titleToJobIds.keys()).filter((key) => !irrelevantKeys.has(key))
-      );
+  // Chunked the same way as the scoring stage below -- sending all distinct
+  // titles in one prompt (previously unbatched) trivially exceeded the
+  // per-request token ceiling on a corpus this size, failing every batch
+  // regardless of which key served it.
+  const irrelevantKeys = new Set<string>();
+  const preFilterBatches = chunk(distinctTitles, BATCH_SIZE);
+  await runWithConcurrency(preFilterBatches, MAX_CONCURRENT_BATCHES, async (batch) => {
+    try {
+      const preFilterRaw = await generateText(buildPreFilterPrompt(resumeContent, batch));
+      const preFilterParsed = parseJsonResponse<PreFilterResponse>(preFilterRaw);
+      if (Array.isArray(preFilterParsed.irrelevant_titles)) {
+        for (const t of preFilterParsed.irrelevant_titles) {
+          if (typeof t === 'string') irrelevantKeys.add(normalizeTitle(t));
+        }
+      }
+    } catch (err) {
+      console.error('Pre-filter batch failed, keeping these titles', err);
     }
-  } catch (err) {
-    console.error('Pre-filter stage failed, proceeding with all titles', err);
-  }
+  });
+
+  const survivorKeys = new Set(
+    Array.from(titleToJobIds.keys()).filter((key) => !irrelevantKeys.has(key))
+  );
 
   const survivorTitles = Array.from(survivorKeys).map((key) => titleToJobIds.get(key)!.displayTitle);
   const batches = chunk(survivorTitles, BATCH_SIZE);

@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateText as groqGenerateText, isGroqAvailable } from './groq';
 
 const MODEL_NAME = 'gemini-2.0-flash';
 
@@ -16,10 +17,24 @@ function getClient(): GoogleGenerativeAI {
   return client;
 }
 
-export async function generateText(prompt: string): Promise<string> {
+export function isLlmAvailable(): boolean {
+  return isGroqAvailable() || Boolean(process.env.GEMINI_API_KEY);
+}
+
+async function generateTextGemini(prompt: string): Promise<string> {
   const model = getClient().getGenerativeModel({ model: MODEL_NAME });
   const result = await model.generateContent(prompt);
   return result.response.text();
+}
+
+// Groq takes priority whenever configured -- it's a pool of keys rather than
+// a single per-project quota, so it survives the concurrent-batch scoring in
+// the /api/resume/match routes better than Gemini's free tier does.
+export async function generateText(prompt: string): Promise<string> {
+  if (isGroqAvailable()) {
+    return groqGenerateText(prompt);
+  }
+  return generateTextGemini(prompt);
 }
 
 export class GeminiJsonParseError extends Error {
