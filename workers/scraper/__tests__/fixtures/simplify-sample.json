@@ -1,0 +1,83 @@
+[
+  {
+    "company_name": "Acme Corp",
+    "title": "Software Engineer Intern",
+    "url": "https://acme.com/jobs/swe-intern",
+    "active": true,
+    "is_visible": true,
+    "terms": ["Fall 2026"],
+    "date_posted": 1748000000
+  },
+  {
+    "company_name": "Beta Systems",
+    "title": "Backend Engineer Intern",
+    "url": "https://beta.com/jobs/backend-intern",
+    "active": true,
+    "is_visible": true,
+    "terms": ["Fall 2026", "Spring 2027"],
+    "date_posted": 1748100000
+  },
+  {
+    "company_name": "Gamma AI",
+    "title": "ML Engineer Intern",
+    "url": "https://gamma.ai/careers/ml-intern",
+    "active": true,
+    "is_visible": true,
+    "terms": ["Fall 2026"],
+    "date_posted": 1748200000
+  },
+  {
+    "company_name": "Delta Inc",
+    "title": "Data Engineer Intern",
+    "url": "https://delta.com/jobs/data-intern",
+    "active": false,
+    "is_visible": true,
+    "terms": ["Fall 2026"],
+    "date_posted": 1747000000
+  },
+  {
+    "company_name": "Epsilon Labs",
+    "title": "Platform Engineer Intern",
+    "url": "https://epsilon.io/careers/platform-intern",
+    "active": false,
+    "is_visible": false,
+    "terms": ["Summer 2026"],
+    "date_posted": 1747100000
+  },
+  {
+    "company_name": "Zeta Technologies",
+    "title": "DevOps Engineer Intern",
+    "url": "https://zeta.com/jobs/devops-intern",
+    "active": true,
+    "is_visible": false,
+    "terms": ["Fall 2026"],
+    "date_posted": 1748300000
+  },
+  {
+    "company_name": "Eta Corp",
+    "title": "Frontend Engineer Intern",
+    "url": "https://eta.com/careers/frontend-intern",
+    "active": true,
+    "is_visible": true,
+    "terms": ["Summer 2026"],
+    "date_posted": 1747200000
+  },
+  {
+    "company_name": "Theta Solutions",
+    "title": "Security Engineer Intern",
+    "url": "https://theta.io/jobs/security-intern",
+    "active": true,
+    "is_visible": true,
+    "terms": ["Summer 2026", "Spring 2027"],
+    "date_posted": 1747300000
+  },
+  {
+    "company_name": "Iota Networks",
+    "title": "Network Engineer Intern",
+    "url": "https://iota.net/careers/network-intern",
+    "active": true,
+    "is_visible": true,
+    "terms": [],
+    "date_posted": null
+  }
+]
