@@ -1,5 +1,5 @@
 import { fetchText } from '../lib/fetch.js';
-import { extractText, extractUrl, parseMarkdownTable } from '../lib/markdown.js';
+import { extractText, extractUrl, parseDateCell, parseMarkdownTable } from '../lib/markdown.js';
 import type { RawListing } from '../types.js';
 
 // USA internship listings were consolidated into README.md (FAANG+/Quant/Other
@@ -26,7 +26,9 @@ function rowToListing(
       k.includes('url') ||
       k.includes('posting')
   );
-  const dateKey = keys.find(k => k.includes('date'));
+  // This source's date column is headed "Age" (relative days-ago, e.g. "8d"),
+  // not "Date" — falls back to any 'date'-named column for other layouts.
+  const dateKey = keys.find(k => k.includes('age')) ?? keys.find(k => k.includes('date'));
 
   const company = companyKey ? extractText(row[companyKey]) : null;
   const title = titleKey ? extractText(row[titleKey]) : null;
@@ -49,11 +51,7 @@ function rowToListing(
 
   if (!company || !title || !url) return null;
 
-  let postedAt: Date | null = null;
-  if (dateKey && row[dateKey]) {
-    const parsed = new Date(row[dateKey]);
-    if (!isNaN(parsed.getTime())) postedAt = parsed;
-  }
+  const postedAt = dateKey && row[dateKey] ? parseDateCell(row[dateKey]) : null;
 
   return { company, title, url, postedAt, stream };
 }

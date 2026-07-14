@@ -1,5 +1,5 @@
 import { fetchText } from '../lib/fetch.js';
-import { extractText, extractUrl, parseMarkdownTable } from '../lib/markdown.js';
+import { extractText, extractUrl, parseDateCell, parseMarkdownTable } from '../lib/markdown.js';
 import type { RawListing } from '../types.js';
 
 const README_URL =
@@ -53,11 +53,7 @@ export async function fetchVanshb03(): Promise<RawListing[]> {
 
     if (!company || !title || !url) continue;
 
-    let postedAt: Date | null = null;
-    if (dateKey && row[dateKey]) {
-      const parsed = new Date(row[dateKey]);
-      if (!isNaN(parsed.getTime())) postedAt = parsed;
-    }
+    const postedAt = dateKey && row[dateKey] ? parseDateCell(row[dateKey]) : null;
 
     listings.push({ company, title, url, postedAt, stream: 'new_grad' });
   }

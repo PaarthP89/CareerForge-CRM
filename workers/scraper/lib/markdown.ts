@@ -46,6 +46,44 @@ export function extractText(cell: string): string | null {
   return stripped || null;
 }
 
+// Parses a "posted date" table cell into a real Date. Source READMEs use two
+// incompatible shapes for this: a relative age like "8d"/"0d" (speedyapply's
+// "Age" column counts days since posting) and a yearless short date like
+// "Jul 09" (vanshb03's "Date Posted" column) — `new Date('Jul 09')` parses
+// "successfully" but silently defaults to the year 2001, which would sink
+// every one of that source's postings to the bottom of a posted-date sort.
+export function parseDateCell(raw: string): Date | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  const ageMatch = trimmed.match(/^(\d+)\s*d$/i);
+  if (ageMatch) {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() - Number(ageMatch[1]));
+    return date;
+  }
+
+  // Only a "Mon D"/"Mon DD" shape (e.g. "Jul 9", "Jul 09") is treated as a
+  // yearless date — anything looser risks JS's lenient Date parser
+  // misreading unrelated text as a valid date (e.g. `new Date('foo 2026')`
+  // silently resolves to Jan 1 2026).
+  if (/^[A-Za-z]{3,9}\.?\s+\d{1,2}(st|nd|rd|th)?$/.test(trimmed)) {
+    const now = new Date();
+    const withYear = new Date(`${trimmed} ${now.getUTCFullYear()}`);
+    if (!isNaN(withYear.getTime())) {
+      // Guards the Dec/Jan rollover: a "Dec 31" cell parsed in early January
+      // would otherwise land in the future.
+      if (withYear.getTime() > now.getTime() + 24 * 60 * 60 * 1000) {
+        withYear.setUTCFullYear(withYear.getUTCFullYear() - 1);
+      }
+      return withYear;
+    }
+  }
+
+  const parsed = new Date(trimmed);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function isSeparatorRow(line: string): boolean {
   const inner = line.trim().replace(/^\||\|$/g, '');
   return inner.split('|').every(cell => /^[\s\-:]+$/.test(cell));

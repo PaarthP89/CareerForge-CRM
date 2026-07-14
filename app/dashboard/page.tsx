@@ -58,11 +58,14 @@ export default async function DashboardPage() {
   }
 
   // Fetching internship and new_grad separately ensures one stream can't
-  // starve the other while paging.
+  // starve the other while paging. Sorted newest-posted-first; jobs where
+  // posted_at is unknown sink below every job with a known posted date
+  // (nullsFirst: false), falling back to discovered_at/id as tiebreakers.
   const baseQuery = () =>
     supabase
       .from('jobs')
       .select('*')
+      .order('posted_at', { ascending: false, nullsFirst: false })
       .order('discovered_at', { ascending: false })
       .order('id', { ascending: false });
 
