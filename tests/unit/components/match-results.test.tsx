@@ -84,4 +84,32 @@ describe('MatchResults', () => {
     await waitFor(() => expect(screen.getByText('91/100')).toBeInTheDocument());
     expect(screen.getByText('Kubernetes')).toBeInTheDocument();
   });
+
+  it('shows a Retry button on Deep Compare failure and recovers on click', async () => {
+    const user = userEvent.setup();
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'Comparison failed' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          score: 70,
+          reasoning: 'Decent match.',
+          missingKeywords: [],
+          jdFetched: false,
+        }),
+      });
+
+    render(<MatchResults initialMatches={[makeMatch()]} />);
+    await user.click(screen.getByRole('button', { name: 'Deep-compare against this job' }));
+
+    await waitFor(() => expect(screen.getByText('Comparison failed')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.getByText('70/100')).toBeInTheDocument());
+    expect(
+      screen.getByText(/Based on title\/company only/)
+    ).toBeInTheDocument();
+  });
 });

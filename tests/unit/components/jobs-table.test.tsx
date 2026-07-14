@@ -89,4 +89,61 @@ describe('JobsTable', () => {
     await user.click(screen.getByRole('tab', { name: 'Trash' }));
     expect(screen.getByText('Nothing in the trash.')).toBeInTheDocument();
   });
+
+  it('optimistically moves a job to the Trash tab and DELETEs it on click', async () => {
+    const user = userEvent.setup();
+    const job = makeJob({ id: 'job-1' });
+    render(<JobsTable initialJobs={[job]} initialTrash={[]} />);
+
+    await user.click(
+      screen.getByRole('button', { name: `Delete ${job.title} at ${job.company}` })
+    );
+
+    expect(fetch).toHaveBeenCalledWith('/api/jobs/job-1', { method: 'DELETE' });
+    expect(screen.getByText(/No jobs here yet/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Trash' }));
+    expect(screen.getByText(job.company)).toBeInTheDocument();
+  });
+
+  it('restores a job from the Trash tab back to its active list', async () => {
+    const user = userEvent.setup();
+    const job = makeJob({ id: 'job-1', deleted_at: '2026-07-01T00:00:00.000Z' });
+    render(<JobsTable initialJobs={[]} initialTrash={[job]} />);
+
+    await user.click(screen.getByRole('tab', { name: 'Trash' }));
+    await user.click(
+      screen.getByRole('button', { name: `Restore ${job.title} at ${job.company}` })
+    );
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/jobs/job-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ restore: true }),
+      })
+    );
+    expect(screen.getByText('Nothing in the trash.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Internships' }));
+    expect(screen.getByText(job.company)).toBeInTheDocument();
+  });
+
+  it('paginates when a tab has more than 50 jobs', async () => {
+    const user = userEvent.setup();
+    const jobs = Array.from({ length: 55 }, (_, i) =>
+      makeJob({ id: `job-${i}`, company: `Company${i}` })
+    );
+    render(<JobsTable initialJobs={jobs} initialTrash={[]} />);
+
+    expect(screen.getByText('Page 1 of 2 (55 total)')).toBeInTheDocument();
+    expect(screen.getAllByRole('row')).toHaveLength(51); // header + 50 rows
+
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
+
+    expect(screen.getByText('Page 2 of 2 (55 total)')).toBeInTheDocument();
+    expect(screen.getAllByRole('row')).toHaveLength(6); // header + 5 remaining rows
+    expect(screen.getByRole('button', { name: 'Previous page' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled();
+  });
 });
