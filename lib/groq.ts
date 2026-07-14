@@ -38,6 +38,15 @@ function extractRetryDelayMs(retryAfterHeader: string | null, body: string): num
   return DEFAULT_BACKOFF_MS;
 }
 
+// llama-3.1-8b-instant is unreliable at producing syntactically valid JSON on
+// its own (observed live: batches truncating mid-array with no closing
+// bracket) -- Groq's server-side json_object mode uses constrained decoding
+// to guarantee valid JSON syntax. It requires (a) the word "json" somewhere
+// in the prompt (all callers already ask for "strict JSON") and (b) a
+// top-level JSON *object*, not a bare array -- callers that want an array
+// must ask for it wrapped under a named key (verified: without an explicit
+// key, the model wraps it under an arbitrary key of its own choosing, which
+// isn't parseable deterministically).
 async function callWithKey(key: string, prompt: string): Promise<string> {
   const res = await fetch(GROQ_ENDPOINT, {
     method: 'POST',
@@ -47,6 +56,7 @@ async function callWithKey(key: string, prompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model: MODEL_NAME,
+      response_format: { type: 'json_object' },
       messages: [{ role: 'user', content: prompt }],
     }),
   });

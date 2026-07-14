@@ -26,6 +26,7 @@ async function callWithKey(key: string, prompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model: MODEL_NAME,
+      response_format: { type: 'json_object' },
       messages: [{ role: 'user', content: prompt }],
     }),
   });

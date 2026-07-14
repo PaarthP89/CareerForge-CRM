@@ -51,7 +51,7 @@ export default async function ResumePage() {
       fetchAllRows((from, to) =>
         supabase
           .from('job_matches')
-          .select('id, job_id, score, reasoning, matched_at, jobs(title, company)')
+          .select('id, job_id, score, reasoning, matched_at, jobs(*)')
           .eq('user_id', user.id)
           .order('score', { ascending: false })
           .order('id', { ascending: true })

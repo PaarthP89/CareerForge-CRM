@@ -81,6 +81,51 @@ function jobKey(company: string, title: string, url: string): string {
  * `jobs` — only genuinely new candidates are worth a liveness/quality fetch.
  * Existing rows get rechecked by the separate weekly link-health sweep instead.
  */
+const EXISTING_URL_CHECK_MAX_ATTEMPTS = 3;
+const EXISTING_URL_CHECK_RETRY_DELAY_MS = 1_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * A single dropped connection here used to silently degrade the whole run:
+ * one failed chunk fell back to "treat as new," triggering the expensive
+ * inline classify pipeline on the entire corpus instead of the real nightly
+ * delta (see the 2026-07-14 incident notes). Retry transient failures a few
+ * times before accepting that fallback.
+ */
+async function fetchExistingChunk(
+  supabase: ReturnType<typeof getServiceRoleSupabaseClient>,
+  chunk: string[]
+): Promise<{ company: string; title: string; url: string }[] | null> {
+  for (let attempt = 1; attempt <= EXISTING_URL_CHECK_MAX_ATTEMPTS; attempt++) {
+    const { data, error } = await supabase
+      .from('jobs')
+      .select('company,title,url')
+      .in('url', chunk);
+
+    if (!error) {
+      return data ?? [];
+    }
+
+    if (attempt < EXISTING_URL_CHECK_MAX_ATTEMPTS) {
+      console.warn(
+        `[scraper] Existing-row lookup failed (attempt ${attempt}/${EXISTING_URL_CHECK_MAX_ATTEMPTS}), retrying in ${EXISTING_URL_CHECK_RETRY_DELAY_MS}ms:`,
+        error.message
+      );
+      await sleep(EXISTING_URL_CHECK_RETRY_DELAY_MS);
+    } else {
+      console.error(
+        `[scraper] Existing-row lookup failed after ${EXISTING_URL_CHECK_MAX_ATTEMPTS} attempts, treating this chunk as new:`,
+        error.message
+      );
+    }
+  }
+
+  return null;
+}
+
 async function partitionNewCandidates(
   supabase: ReturnType<typeof getServiceRoleSupabaseClient>,
   candidates: { company: string; title: string; url: string }[]
@@ -90,17 +135,9 @@ async function partitionNewCandidates(
 
   for (let i = 0; i < urls.length; i += EXISTING_URL_CHECK_CHUNK_SIZE) {
     const chunk = urls.slice(i, i + EXISTING_URL_CHECK_CHUNK_SIZE);
-    const { data, error } = await supabase
-      .from('jobs')
-      .select('company,title,url')
-      .in('url', chunk);
+    const rows = await fetchExistingChunk(supabase, chunk);
 
-    if (error) {
-      console.error('[scraper] Existing-row lookup failed, treating all as new:', error.message);
-      continue;
-    }
-
-    for (const row of data ?? []) {
+    for (const row of rows ?? []) {
       existingKeys.add(jobKey(row.company, row.title, row.url));
     }
   }

@@ -14,7 +14,22 @@ function makeMatch(overrides: Partial<Parameters<typeof MatchResults>[0]['initia
     score: 82,
     reasoning: 'Strong overlap on core skills.',
     matched_at: '2026-07-01T00:00:00.000Z',
-    jobs: { title: 'Software Engineer Intern', company: 'Acme Corp' },
+    jobs: {
+      id: 'job-1',
+      user_id: 'user-1',
+      title: 'Software Engineer Intern',
+      company: 'Acme Corp',
+      url: 'https://acme.example.com/jobs/1',
+      stream: 'internship' as const,
+      posted_at: '2026-06-01T00:00:00.000Z',
+      discovered_at: '2026-06-02T00:00:00.000Z',
+      applied: false,
+      resume_file_path: null,
+      created_at: '2026-06-02T00:00:00.000Z',
+      deleted_at: null,
+      url_quality: null,
+      last_checked_at: null,
+    },
     ...overrides,
   };
 }

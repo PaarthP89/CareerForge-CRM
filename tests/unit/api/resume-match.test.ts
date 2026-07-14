@@ -91,9 +91,9 @@ describe('POST /api/resume/match', () => {
       if (prompt.includes('irrelevant_titles')) {
         return JSON.stringify({ irrelevant_titles: ['Financial Analyst'] });
       }
-      return JSON.stringify([
-        { title: 'Software Engineer Intern', score: 85, reasoning: 'Strong match' },
-      ]);
+      return JSON.stringify({
+        results: [{ title: 'Software Engineer Intern', score: 85, reasoning: 'Strong match' }],
+      });
     });
 
     const res = await POST();

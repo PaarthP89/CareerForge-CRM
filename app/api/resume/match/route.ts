@@ -74,8 +74,8 @@ RESUME:
 ${resumeContent}
 """
 
-Score each of the following job titles for relevance to this resume. Respond with ONLY strict JSON, an array in this exact shape, no other text, no markdown fences:
-[{"title": "<title>", "score": <integer 0-100>, "reasoning": "<one short sentence>"}]
+Score each of the following job titles for relevance to this resume. Respond with ONLY strict JSON in this exact shape, no other text, no markdown fences:
+{"results": [{"title": "<title>", "score": <integer 0-100>, "reasoning": "<one short sentence>"}]}
 
 TITLES:
 ${titles.map((t) => `- ${t}`).join('\n')}`;
@@ -178,16 +178,16 @@ export async function POST() {
   await runWithConcurrency(batches, MAX_CONCURRENT_BATCHES, async (batch) => {
     try {
       const raw = await generateText(buildScoringPrompt(resumeContent, batch));
-      const parsed = parseJsonResponse<ScoredTitle[]>(raw);
+      const parsed = parseJsonResponse<{ results: ScoredTitle[] }>(raw);
 
-      if (!Array.isArray(parsed)) {
-        throw new GeminiJsonParseError(raw, new Error('Expected a JSON array'));
+      if (!Array.isArray(parsed.results)) {
+        throw new GeminiJsonParseError(raw, new Error('Expected a "results" array'));
       }
 
       const rows: { user_id: string; job_id: string; score: number; reasoning: string | null; matched_at: string }[] = [];
       const matchedAt = new Date().toISOString();
 
-      for (const entry of parsed) {
+      for (const entry of parsed.results) {
         if (
           !entry ||
           typeof entry.title !== 'string' ||
@@ -253,7 +253,7 @@ export async function GET() {
   const { data, error } = await fetchAllRows((from, to) =>
     supabase
       .from('job_matches')
-      .select('id, job_id, score, reasoning, matched_at, jobs(title, company)')
+      .select('id, job_id, score, reasoning, matched_at, jobs(*)')
       .eq('user_id', user.id)
       .order('score', { ascending: false })
       .order('id', { ascending: true })
