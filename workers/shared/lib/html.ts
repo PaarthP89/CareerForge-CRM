@@ -51,8 +51,32 @@ export function extractTitleTag(html: string): string | null {
   return decoded.length > 0 ? decoded : null;
 }
 
+// A plain fetch against a bot-walled or client-rendered-only page often still
+// returns 200 OK with 200+ chars of text -- just not real content: an Akamai/
+// Cloudflare block page, or a React/Vue shell whose actual body never
+// executes without JS. Length alone can't tell these apart from a genuine
+// (if short) posting, so without this check the length-only gate was
+// swallowing that garbage as "viable" and skipping the browser fallback
+// entirely -- confirmed live against a sample of jobs.apple.com ("Please
+// enable Javascript...") and a Tesla listing blocked by Akamai ("Access
+// Denied") that were both being misclassified 'generic' as a result, purely
+// because the plain-fetch shell text was long enough to look real.
+const BOT_BLOCK_OR_SHELL_SIGNALS = [
+  /access denied/i,
+  /request unsuccessful/i,
+  /attention required.{0,30}cloudflare/i,
+  /please enable javascript/i,
+  /you need to enable javascript/i,
+  /javascript is disabled/i,
+  /are you a human/i,
+  /this website is using a security service/i,
+  /403 forbidden/i,
+  /reference #\S*\.edgesuite\.net/i,
+];
+
 export function isViableJobDescription(text: string): boolean {
-  return text.length >= MIN_VIABLE_CHARS;
+  if (text.length < MIN_VIABLE_CHARS) return false;
+  return !BOT_BLOCK_OR_SHELL_SIGNALS.some((re) => re.test(text));
 }
 
 /**

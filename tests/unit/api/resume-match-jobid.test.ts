@@ -2,15 +2,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { POST } from '@/app/api/resume/match/[jobId]/route';
 import { getSupabaseServerClient } from '@/lib/supabase-server';
-import { generateText, isLlmAvailable } from '@/lib/gemini';
+import { generateText, isLlmAvailable } from '@/workers/shared/lib/llm';
 import { makeFakeServerClient, makeQueryBuilder, type FakeQueryBuilder } from '../helpers/fake-supabase';
 
 vi.mock('@/lib/supabase-server', () => ({
   getSupabaseServerClient: vi.fn(),
 }));
 
-vi.mock('@/lib/gemini', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/gemini')>();
+vi.mock('@/workers/shared/lib/llm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/workers/shared/lib/llm')>();
   return {
     ...actual,
     generateText: vi.fn(),

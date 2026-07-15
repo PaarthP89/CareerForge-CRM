@@ -1,5 +1,5 @@
-import { generateText as geminiGenerateText, LlmRateLimitError } from './gemini.js';
-import { generateText as groqGenerateText, isGroqAvailable } from './groq.js';
+import { generateText as geminiGenerateText, LlmRateLimitError } from './gemini';
+import { generateText as groqGenerateText, isGroqAvailable } from './groq';
 
 export { LlmRateLimitError };
 

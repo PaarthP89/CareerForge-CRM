@@ -99,6 +99,33 @@ describe('isViableJobDescription', () => {
     expect(isViableJobDescription('short')).toBe(false);
     expect(isViableJobDescription('x'.repeat(200))).toBe(true);
   });
+
+  it('rejects a long-enough bot-block page as not viable', () => {
+    const akamaiBlock =
+      'Access Denied Access Denied You don\'t have permission to access this on this server. ' +
+      'Reference #18.cdab3717.1784076420.24f973c2 https://errors.edgesuite.net/18.cdab3717.1784076420.24f973c2'.repeat(3);
+    expect(akamaiBlock.length).toBeGreaterThanOrEqual(200);
+    expect(isViableJobDescription(akamaiBlock)).toBe(false);
+  });
+
+  it('rejects a long-enough client-rendered shell that never executed JS', () => {
+    const jsShell =
+      'Careers at Acme Store Mac iPad Please enable Javascript in your browser for best experience. '.repeat(3);
+    expect(jsShell.length).toBeGreaterThanOrEqual(200);
+    expect(isViableJobDescription(jsShell)).toBe(false);
+  });
+
+  it('rejects a Cloudflare interstitial', () => {
+    const cloudflare = 'Attention Required! | Cloudflare '.repeat(10);
+    expect(cloudflare.length).toBeGreaterThanOrEqual(200);
+    expect(isViableJobDescription(cloudflare)).toBe(false);
+  });
+
+  it('still accepts long real content with no bot-block signals', () => {
+    const real =
+      'Software Engineer Intern. Responsibilities include building distributed systems and writing tests. '.repeat(3);
+    expect(isViableJobDescription(real)).toBe(true);
+  });
 });
 
 describe('isFetchableUrl', () => {

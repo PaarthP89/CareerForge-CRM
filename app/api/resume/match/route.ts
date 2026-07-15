@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient } from '@/lib/supabase-server';
 import { fetchAllRows } from '@/lib/supabase-pagination';
-import { generateText, parseJsonResponse, GeminiJsonParseError, isLlmAvailable } from '@/lib/gemini';
+import { generateText, isLlmAvailable } from '@/workers/shared/lib/llm';
+import { parseJsonResponse, LlmJsonParseError } from '@/workers/shared/lib/json';
 
 // Every prompt re-embeds the full resume text, so batches must stay well
 // under Groq's free-tier 6K-token/minute-per-key ceiling once the resume,
@@ -181,7 +182,7 @@ export async function POST() {
       const parsed = parseJsonResponse<{ results: ScoredTitle[] }>(raw);
 
       if (!Array.isArray(parsed.results)) {
-        throw new GeminiJsonParseError(raw, new Error('Expected a "results" array'));
+        throw new LlmJsonParseError(raw, new Error('Expected a "results" array'));
       }
 
       const rows: { user_id: string; job_id: string; score: number; reasoning: string | null; matched_at: string }[] = [];

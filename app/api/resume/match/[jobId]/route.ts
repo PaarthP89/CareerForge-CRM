@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient } from '@/lib/supabase-server';
-import { generateText, parseJsonResponse, GeminiJsonParseError, isLlmAvailable } from '@/lib/gemini';
+import { generateText, isLlmAvailable } from '@/workers/shared/lib/llm';
+import { parseJsonResponse, LlmJsonParseError } from '@/workers/shared/lib/json';
 import { extractReadableText, isViableJobDescription } from '@/lib/html';
 
 const FETCH_TIMEOUT_MS = 10_000;
@@ -147,7 +148,7 @@ export async function POST(
     const raw = await generateText(prompt);
     const parsed = parseJsonResponse<unknown>(raw);
     if (!isValidCompareResult(parsed)) {
-      throw new GeminiJsonParseError(raw, new Error('Response did not match expected shape'));
+      throw new LlmJsonParseError(raw, new Error('Response did not match expected shape'));
     }
     result = parsed;
   } catch (err) {
