@@ -70,7 +70,11 @@ type SourceFetcher = () => Promise<RawListing[]>;
 
 const CANDIDATE_CHECK_CONCURRENCY = 5;
 const CANDIDATE_FETCH_TIMEOUT_MS = 10_000;
-const EXISTING_URL_CHECK_CHUNK_SIZE = 200;
+// 200 was hitting undici's HEADERS_OVERFLOW limit: a GET .in() query puts every
+// URL in the chunk into the request's query string, and 200 job URLs (avg ~70
+// chars, up to 255) built a ~15.5KB request line that Node's http client can't
+// parse. 100 leaves headroom for longer URLs from future sources.
+const EXISTING_URL_CHECK_CHUNK_SIZE = 100;
 
 function jobKey(company: string, title: string, url: string): string {
   return `${company}\0${title}\0${url}`;
