@@ -10,6 +10,38 @@ const CHECK_CONCURRENCY = 5;
 const FETCH_TIMEOUT_MS = 10_000;
 const DEFAULT_BATCH_SIZE = 300;
 
+/**
+ * postgrest-js only auto-retries GET/HEAD/OPTIONS (see its RETRYABLE_METHODS) —
+ * a .update() is a PATCH, so any transient network blip during a run (heavy
+ * concurrent Chromium + fetch traffic) surfaces as an immediate, unretried
+ * failure with no built-in backoff at all. Same class of issue as the
+ * scraper's fetchExistingChunk fix (2026-07-28): retry a few times ourselves
+ * before counting it as a real failure.
+ */
+const UPDATE_MAX_ATTEMPTS = 3;
+const UPDATE_RETRY_DELAY_MS = 1_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function updateJobWithRetry(
+  supabase: ReturnType<typeof getServiceRoleSupabaseClient>,
+  jobId: string,
+  patch: Record<string, unknown>
+): Promise<{ message: string } | null> {
+  let lastError: { message: string } | null = null;
+  for (let attempt = 1; attempt <= UPDATE_MAX_ATTEMPTS; attempt++) {
+    const { error } = await supabase.from('jobs').update(patch).eq('id', jobId);
+    if (!error) return null;
+    lastError = error;
+    if (attempt < UPDATE_MAX_ATTEMPTS) {
+      await sleep(UPDATE_RETRY_DELAY_MS);
+    }
+  }
+  return lastError;
+}
+
 function validateEnv(): void {
   const required = ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
   const missing = required.filter(k => !process.env[k]);
@@ -89,12 +121,15 @@ async function main(): Promise<void> {
     const liveness = await checkListingLiveness(fetched, job.title, job.company, allowLlm);
 
     if (liveness === 'dead') {
-      const { error } = await supabase
-        .from('jobs')
-        .update({ deleted_at: now, last_checked_at: now })
-        .eq('id', job.id);
+      const error = await updateJobWithRetry(supabase, job.id, {
+        deleted_at: now,
+        last_checked_at: now,
+      });
       if (error) {
-        console.error(`[link-health] Failed to soft-delete job ${job.id}:`, error.message);
+        console.error(
+          `[link-health] Failed to soft-delete job ${job.id} after ${UPDATE_MAX_ATTEMPTS} attempts:`,
+          error.message
+        );
         updateErrors++;
       } else {
         deadFlagged++;
@@ -112,12 +147,15 @@ async function main(): Promise<void> {
       allowLlm
     );
 
-    const { error } = await supabase
-      .from('jobs')
-      .update({ url_quality: urlQuality, last_checked_at: now })
-      .eq('id', job.id);
+    const error = await updateJobWithRetry(supabase, job.id, {
+      url_quality: urlQuality,
+      last_checked_at: now,
+    });
     if (error) {
-      console.error(`[link-health] Failed to update job ${job.id}:`, error.message);
+      console.error(
+        `[link-health] Failed to update job ${job.id} after ${UPDATE_MAX_ATTEMPTS} attempts:`,
+        error.message
+      );
       updateErrors++;
     }
     checked++;
