@@ -3,6 +3,7 @@ import { notifyDiscord } from '../shared/lib/notify.js';
 import { fetchTextWithTimeout, closeBrowser } from '../shared/lib/html.js';
 import { checkListingLiveness } from '../shared/lib/dead-listing.js';
 import { classifyUrlQuality } from '../shared/lib/url-quality.js';
+import { classifyEligibility } from '../shared/lib/eligibility.js';
 import { runWithConcurrency } from '../shared/lib/concurrency.js';
 import { isLlmAvailable } from '../shared/lib/llm.js';
 
@@ -110,6 +111,7 @@ async function main(): Promise<void> {
 
   let checked = 0;
   let deadFlagged = 0;
+  let ineligibleFlagged = 0;
   let fetchFailures = 0;
   let updateErrors = 0;
 
@@ -147,22 +149,38 @@ async function main(): Promise<void> {
       allowLlm
     );
 
-    const error = await updateJobWithRetry(supabase, job.id, {
+    const eligibility = await classifyEligibility(
+      fetched.text,
+      job.title,
+      job.company,
+      allowLlm
+    );
+
+    const patch: Record<string, unknown> = {
       url_quality: urlQuality,
+      eligibility: eligibility.result,
+      eligibility_reason: eligibility.reason,
       last_checked_at: now,
-    });
+    };
+    if (eligibility.result === 'ineligible') {
+      patch['deleted_at'] = now;
+    }
+
+    const error = await updateJobWithRetry(supabase, job.id, patch);
     if (error) {
       console.error(
         `[link-health] Failed to update job ${job.id} after ${UPDATE_MAX_ATTEMPTS} attempts:`,
         error.message
       );
       updateErrors++;
+    } else if (eligibility.result === 'ineligible') {
+      ineligibleFlagged++;
     }
     checked++;
   });
 
   console.log(
-    `[link-health] Done — checked: ${checked}, deadFlagged: ${deadFlagged}, fetchFailures: ${fetchFailures}, updateErrors: ${updateErrors}`
+    `[link-health] Done — checked: ${checked}, deadFlagged: ${deadFlagged}, ineligibleFlagged: ${ineligibleFlagged}, fetchFailures: ${fetchFailures}, updateErrors: ${updateErrors}`
   );
 
   if (updateErrors > 0) {

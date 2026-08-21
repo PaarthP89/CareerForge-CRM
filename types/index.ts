@@ -2,6 +2,8 @@ export type JobStream = 'internship' | 'new_grad';
 
 export type UrlQuality = 'direct' | 'generic' | 'unknown';
 
+export type Eligibility = 'eligible' | 'ineligible' | 'unknown';
+
 export interface Job {
   id: string;
   user_id: string;
@@ -17,6 +19,8 @@ export interface Job {
   deleted_at: string | null;
   url_quality: UrlQuality | null;
   last_checked_at: string | null;
+  eligibility: Eligibility | null;
+  eligibility_reason: string | null;
 }
 
 export interface Resume {

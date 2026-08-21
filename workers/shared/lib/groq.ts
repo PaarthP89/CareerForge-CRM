@@ -1,6 +1,6 @@
 import { LlmRateLimitError } from './gemini';
 
-const MODEL_NAME = 'llama-3.1-8b-instant';
+const MODEL_NAME = 'openai/gpt-oss-20b';
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const MAX_KEY_PASSES = 3;
 const MAX_BACKOFF_MS = 15_000;
@@ -40,8 +40,8 @@ function extractRetryDelayMs(retryAfterHeader: string | null, body: string): num
   return DEFAULT_BACKOFF_MS;
 }
 
-// llama-3.1-8b-instant is unreliable at producing syntactically valid JSON on
-// its own (observed live: batches truncating mid-array with no closing
+// Small Groq models are unreliable at producing syntactically valid JSON on
+// their own (observed live: batches truncating mid-array with no closing
 // bracket) -- Groq's server-side json_object mode uses constrained decoding
 // to guarantee valid JSON syntax. It requires (a) the word "json" somewhere
 // in the prompt and (b) a top-level JSON *object*, not a bare array.

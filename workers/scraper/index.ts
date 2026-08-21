@@ -7,6 +7,7 @@ import { notifyDiscord } from '../shared/lib/notify.js';
 import { fetchTextWithTimeout, closeBrowser } from '../shared/lib/html.js';
 import { checkListingLiveness } from '../shared/lib/dead-listing.js';
 import { classifyUrlQuality, type UrlQuality } from '../shared/lib/url-quality.js';
+import { classifyEligibility, type EligibilityResult } from '../shared/lib/eligibility.js';
 import { runWithConcurrency } from '../shared/lib/concurrency.js';
 import { isLlmAvailable } from '../shared/lib/llm.js';
 import type { RawListing } from './types.js';
@@ -52,6 +53,8 @@ type JobInsertRow = {
   resume_file_path: string | null;
   url_quality: UrlQuality | null;
   last_checked_at: string | null;
+  eligibility: EligibilityResult | null;
+  eligibility_reason: string | null;
 };
 
 interface SourceCounts {
@@ -64,6 +67,7 @@ interface SourceCounts {
 interface SourceResult extends SourceCounts {
   source: string;
   deadSkipped: number;
+  ineligibleSkipped: number;
 }
 
 type SourceFetcher = () => Promise<RawListing[]>;
@@ -191,6 +195,7 @@ async function runSource(
 
     const rows: JobInsertRow[] = [];
     let deadSkipped = 0;
+    let ineligibleSkipped = 0;
 
     await runWithConcurrency(candidates, CANDIDATE_CHECK_CONCURRENCY, async ({ listing }) => {
       const baseRow = {
@@ -208,7 +213,13 @@ async function runSource(
       if (existingKeys.has(key)) {
         // Already tracked — the weekly link-health sweep owns rechecking it,
         // and ignoreDuplicates means this payload is discarded on conflict anyway.
-        rows.push({ ...baseRow, url_quality: null, last_checked_at: null });
+        rows.push({
+          ...baseRow,
+          url_quality: null,
+          last_checked_at: null,
+          eligibility: null,
+          eligibility_reason: null,
+        });
         return;
       }
 
@@ -234,10 +245,26 @@ async function runSource(
         allowLlm
       );
 
+      const eligibility = await classifyEligibility(
+        fetched.text,
+        listing.title,
+        listing.company,
+        allowLlm
+      );
+      if (eligibility.result === 'ineligible') {
+        ineligibleSkipped++;
+        console.warn(
+          `[scraper:${name}] Skipped ineligible listing "${listing.company} — ${listing.title}": ${eligibility.reason ?? 'no reason given'}`
+        );
+        return;
+      }
+
       rows.push({
         ...baseRow,
         url_quality: urlQuality,
         last_checked_at: new Date().toISOString(),
+        eligibility: eligibility.result,
+        eligibility_reason: eligibility.reason,
       });
     });
 
@@ -258,7 +285,7 @@ async function runSource(
     }
 
     console.log(
-      `[scraper:${name}] Done — attempted: ${rows.length}, skipped (missing fields): ${skipped}, rejected (bad url): ${rejectedBadUrl}, dead skipped: ${deadSkipped}, errors: ${errors}`
+      `[scraper:${name}] Done — attempted: ${rows.length}, skipped (missing fields): ${skipped}, rejected (bad url): ${rejectedBadUrl}, dead skipped: ${deadSkipped}, ineligible skipped: ${ineligibleSkipped}, errors: ${errors}`
     );
     if (rejectedBadUrl > 0) {
       await notifyDiscord(
@@ -266,12 +293,28 @@ async function runSource(
         'Scraper'
       );
     }
-    return { source: name, attempted: rows.length, skipped, rejectedBadUrl, deadSkipped, errors };
+    return {
+      source: name,
+      attempted: rows.length,
+      skipped,
+      rejectedBadUrl,
+      deadSkipped,
+      ineligibleSkipped,
+      errors,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[scraper:${name}] Source-level error:`, message);
     await notifyDiscord(`Source "${name}" failed: ${message}`, 'Scraper');
-    return { source: name, attempted: 0, skipped: 0, rejectedBadUrl: 0, deadSkipped: 0, errors: 1 };
+    return {
+      source: name,
+      attempted: 0,
+      skipped: 0,
+      rejectedBadUrl: 0,
+      deadSkipped: 0,
+      ineligibleSkipped: 0,
+      errors: 1,
+    };
   }
 }
 
@@ -289,19 +332,21 @@ async function main(): Promise<void> {
   let totalSkipped = 0;
   let totalRejectedBadUrl = 0;
   let totalDeadSkipped = 0;
+  let totalIneligibleSkipped = 0;
   let totalErrors = 0;
   for (const r of results) {
     console.log(
-      `  ${r.source}: attempted=${r.attempted} skipped=${r.skipped} rejectedBadUrl=${r.rejectedBadUrl} deadSkipped=${r.deadSkipped} errors=${r.errors}`
+      `  ${r.source}: attempted=${r.attempted} skipped=${r.skipped} rejectedBadUrl=${r.rejectedBadUrl} deadSkipped=${r.deadSkipped} ineligibleSkipped=${r.ineligibleSkipped} errors=${r.errors}`
     );
     totalAttempted += r.attempted;
     totalSkipped += r.skipped;
     totalRejectedBadUrl += r.rejectedBadUrl;
     totalDeadSkipped += r.deadSkipped;
+    totalIneligibleSkipped += r.ineligibleSkipped;
     totalErrors += r.errors;
   }
   console.log(
-    `  TOTAL: attempted=${totalAttempted} skipped=${totalSkipped} rejectedBadUrl=${totalRejectedBadUrl} deadSkipped=${totalDeadSkipped} errors=${totalErrors}`
+    `  TOTAL: attempted=${totalAttempted} skipped=${totalSkipped} rejectedBadUrl=${totalRejectedBadUrl} deadSkipped=${totalDeadSkipped} ineligibleSkipped=${totalIneligibleSkipped} errors=${totalErrors}`
   );
 
   if (totalErrors > 0) {
